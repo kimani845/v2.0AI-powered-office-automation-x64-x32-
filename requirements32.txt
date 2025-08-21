@@ -1,0 +1,76 @@
+
+# Dependencies for the lightweight 32-bit add-in client ONLY.
+# For communicating with the Windows OS and WPS Office (COM interface)
+pywin32==306
+# For making HTTP calls to the backend server
+requests==2.32.3
+pyinstaller
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # requirements-32.txt
+# # For use with a 32-bit Python interpreter.
+# # Note: Data science libraries are pinned to older versions for 32-bit compatibility.
+
+# # Web Frameworks & Servers 
+# flask==3.1.2
+# flask-cors==4.0.1
+# fastapi==0.116.1
+# uvicorn[standard]==0.35.0
+
+# # General Utilities 
+# requests==2.32.3
+# python-dotenv==1.0.1
+# pyinstaller==6.10.0
+
+# # Microsoft Office & Windows 
+# python-docx==1.2.0
+# python-pptx==0.6.23
+# pywin32==306; sys_platform == "win32"
+# openpyxl==3.1.5
+
+# # Data Science & Plotting (Pinned for 32-bit) 
+# numpy==1.26.4           # Explicitly pinned. NumPy 2.0+ dropped 32-bit support.
+# pandas==1.5.3           # Last version with 32-bit support.
+# # scipy==1.9.3            # Last version with 32-bit support for Python 3.11.
+# matplotlib==3.8.4       # Last version with 32-bit support.
+# seaborn==0.13.2         # Seaborn is pure python, latest version is okay.
+
+# # LLM & AI Frameworks 
+# openai==1.42.0
+# google-generativeai==0.8.0
+# llama-index==0.10.50
+# llama-parse==0.4.0
+# llama-index-llms-ollama==0.1.6
+
+# # Pydantic & Validation 
+# pydantic==2.11.7
+# python-multipart==0.0.9
+# email-validator==2.2.0
+
+# # Microsoft Authentication 
+# msal==1.30.0

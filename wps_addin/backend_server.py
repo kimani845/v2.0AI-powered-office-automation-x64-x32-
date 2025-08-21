@@ -1,0 +1,286 @@
+"""
+This script is the backend server for the AI Office Automation add-in.
+It uses FastAPI to expose endpoints that perform heavy AI and data processing tasks.
+This server is intended to be run as a standalone 64-bit executable.
+"""
+import os
+import sys
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import docx
+
+# Path Setup
+if getattr(sys, 'frozen', False):
+    base_path = sys._MEIPASS
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.insert(0, base_path)
+
+# All Heavy Imports and Agent Initializations
+try:
+    from app.agents.llm_client import LLMClient
+    from app.agents.analyzer import StructuredDataAgent
+    from app.agents.reports import ReportAgent
+    from app.agents.articles import ArticleAgent
+    from app.agents.documents import DocumentGenerationAgent, DocumentRequest # DocumentRequest is crucial
+except ImportError as e:
+    print(f"FATAL: Could not import agent modules. Ensure the 'app' folder is in the same directory. Error: {e}")
+    sys.exit(1)
+
+print("Backend Server: Initializing AI agents...")
+try:
+    llm_client = LLMClient(provider="deepseek")
+    report_agent = ReportAgent(llm_client)
+    article_agent = ArticleAgent(llm_client)
+    data_agent = StructuredDataAgent(llm_client)
+    document_agent = DocumentGenerationAgent(llm_client)
+    print("Backend Server: AI agents initialized successfully.")
+except Exception as e:
+    print(f"FATAL: Failed to initialize AI agents. Check API keys in config.json. Error: {e}")
+    sys.exit(1)
+
+# Initialize FastAPI Server
+app = FastAPI(title="AI Office Automation Backend Server")
+
+# Define Pydantic Models for API Request Bodies
+class ProcessRequest(BaseModel):
+    prompt: str
+    content: str = "" # Optional content field for analysis/summarization
+
+class GeneralResponse(BaseModel):
+    result: str
+
+# FastAPI Endpoints
+@app.get("/")
+def root():
+    return {"message": "AI Office Backend Server is running."}
+
+# Dedicated endpoint for Document Generation
+# @app.post("/generate_document", response_model=GeneralResponse)
+# def generate_document_endpoint(request: DocumentRequest):
+#     """Generates a document based on a complete DocumentRequest object."""
+#     print("Backend: Received a complete DocumentRequest for generation.")
+#     try:
+#         # The agent now receives a validated DocumentRequest object directly
+#         output_document_obj = document_agent.generate_document(request)
+        
+#         # document_agent.generate_document returns a docx.Document object.
+#         # We need to save it to a temporary file and read its text content.
+#         # This is important for sending the text back via FastAPI.
+#         temp_file_path = "temp_generated_document.docx"
+#         output_document_obj.save(temp_file_path) # Save the docx.Document object to a temporary file
+        
+#         doc = docx.Document(temp_file_path)
+#         full_text = "\n".join([para.text for para in doc.paragraphs])
+#         os.remove(temp_file_path) # Clean up the temporary file
+
+#         if not full_text:
+#             raise HTTPException(status_code=500, detail="Failed to extract text from generated document.")
+#         return GeneralResponse(result=full_text)
+#     except Exception as e:
+#         print(f"Error in generate_document_endpoint: {e}")
+#         raise HTTPException(status_code=500, detail=f"Document generation failed: {str(e)}")
+
+
+# In backend_server.py, replace the existing /generate_document endpoint
+# and add the new dedicated endpoints below it.
+
+# General Document Generation Endpoint (The fallback)
+@app.post("/generate_document", response_model=GeneralResponse)
+def generate_document_endpoint(request: DocumentRequest):
+    """Generates a general document based on a complete DocumentRequest object."""
+    print(f"Backend: Received a general document request for type: '{request.doc_type}'")
+    try:
+        output_document_obj = document_agent.generate_document(request)
+        
+        temp_file_path = "temp_generated_document.docx"
+        output_document_obj.save(temp_file_path)
+        
+        doc = docx.Document(temp_file_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        os.remove(temp_file_path)
+
+        if not full_text:
+            raise HTTPException(status_code=500, detail="Failed to extract text from generated document.")
+        return GeneralResponse(result=full_text)
+    except Exception as e:
+        print(f"Error in generate_document_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Document generation failed: {str(e)}")
+
+# Dedicated Cover Letter Endpoint
+@app.post("/create_cover_letter", response_model=GeneralResponse)
+def create_cover_letter_endpoint(request: DocumentRequest):
+    """Generates a cover letter from structured data."""
+    print(f"Backend: Received a request to create a cover letter for: '{request.topic}'")
+    try:
+        request.doc_type = "cover_letter"
+        output_document_obj = document_agent.generate_document(request)
+        
+        # Save the generated docx.Document object to a temp file and read its text
+        temp_file_path = "temp_cover_letter.docx"
+        output_document_obj.save(temp_file_path)
+        
+        doc = docx.Document(temp_file_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        os.remove(temp_file_path)
+        
+        return GeneralResponse(result=full_text)
+    except Exception as e:
+        print(f"Error in create_cover_letter_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Cover letter creation failed: {str(e)}")
+
+
+# Dedicated Meeting Minutes Endpoint
+@app.post("/create_minutes", response_model=GeneralResponse)
+def create_minutes_endpoint(request: DocumentRequest):
+    """Generates meeting minutes from structured data."""
+    print(f"Backend: Received a request to create minutes for: '{request.topic}'")
+    try:
+        request.doc_type = "minutes"
+        output_document_obj = document_agent.generate_document(request)
+        
+        # Save the generated docx.Document object to a temp file and read its text
+        temp_file_path = "temp_minutes.docx"
+        output_document_obj.save(temp_file_path)
+        
+        doc = docx.Document(temp_file_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        os.remove(temp_file_path)
+        
+        return GeneralResponse(result=full_text)
+    except Exception as e:
+        print(f"Error in create_minutes_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Meeting minutes creation failed: {str(e)}")
+
+# Dedicated Memo Endpoint
+@app.post("/create_memo", response_model=GeneralResponse)
+def create_memo_endpoint(request: DocumentRequest):
+    """Generates a memorandum from structured data."""
+    print(f"Backend: Received a request to create a memo on topic: '{request.topic}'")
+    try:
+        request.doc_type = "memo"
+        output_document_obj = document_agent.generate_document(request)
+        
+        # Save the generated docx.Document object to a temp file and read its text
+        temp_file_path = "temp_memo.docx"
+        output_document_obj.save(temp_file_path)
+        
+        doc = docx.Document(temp_file_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        os.remove(temp_file_path)
+        
+        return GeneralResponse(result=full_text)
+    except Exception as e:
+        print(f"Error in create_memo_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Memo creation failed: {str(e)}")
+    
+# Dedicated endpoint for Report Generation
+@app.post("/create_report", response_model=GeneralResponse)
+def create_report_endpoint(request: ProcessRequest):
+    """Creates a report based on the provided prompt."""
+    print("Backend: Received request to create a report.")
+    try:
+        # Assuming ReportAgent.create_report_content expects a 'topic'
+        # The prompt from ProcessRequest is used as the topic.
+        output_content = report_agent.create_report(
+            topic=request.prompt, 
+            tone="professional", # Default tone
+            length="standard"    # Default length
+        )
+        if not output_content:
+            raise HTTPException(status_code=500, detail="Failed to generate report content.")
+        return GeneralResponse(result=output_content)
+    except Exception as e:
+        print(f"Error in create_report_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+    
+# In backend_server.py
+
+# @app.post("/create_memo", response_model=GeneralResponse)
+# def create_memo_endpoint(request: DocumentRequest):
+#     """
+#     Specifically generates a memorandum based on the provided structured data.
+#     """
+#     print(f"Backend: Received request to create a memo on topic: '{request.topic}'")
+#     try:
+#         # Use the document agent to generate the memo content
+#         # Note: The agent handles the specifics of the 'memo' doc_type internally.
+#         output_document_obj = document_agent.generate_document(request)
+        
+#         # Save the generated docx.Document object to a temp file and read its text
+#         temp_file_path = "temp_generated_memo.docx"
+#         output_document_obj.save(temp_file_path)
+        
+#         doc = docx.Document(temp_file_path)
+#         full_text = "\n".join([para.text for para in doc.paragraphs])
+#         os.remove(temp_file_path)
+
+    #     if not full_text:
+    #         raise HTTPException(status_code=500, detail="Failed to extract text from generated memo.")
+            
+    #     return GeneralResponse(result=full_text)
+    # except Exception as e:
+    #     print(f"Error in create_memo_endpoint: {e}")
+    #     raise HTTPException(status_code=500, detail=f"Memo creation failed: {str(e)}")
+    
+
+# Dedicated endpoint for Data Analysis
+@app.post("/analyze", response_model=GeneralResponse)
+def analyze_endpoint(request: ProcessRequest):
+    """Analyzes provided text content."""
+    print("Backend: Received request to analyze content.")
+    try:
+        if not request.content:
+            raise HTTPException(status_code=400, detail="No content provided for analysis.")
+        
+        # The data_agent.analyze_input_content generates the analysis text directly
+        output_content = data_agent.analyze_input(raw_input=request.content, user_question=request.prompt)
+        
+        if not output_content:
+            raise HTTPException(status_code=500, detail="Failed to generate analysis content.")
+        return GeneralResponse(result=output_content)
+    except Exception as e:
+        print(f"Error in analyze_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+# Dedicated endpoint for Summarization
+@app.post("/summarize", response_model=GeneralResponse)
+def summarize_endpoint(request: ProcessRequest):
+    """Receives text content and returns a summary."""
+    print("Backend: Received request to summarize document.")
+    try:
+        if not request.content:
+            raise HTTPException(status_code=400, detail="No content provided for summarization.")
+            
+        # Corrected: Using generate_response instead of get_completion
+        summary = llm_client.generate_response(
+            f"Please provide a concise summary of the following document:\n\n{request.content}"
+        )
+        if not summary:
+            raise HTTPException(status_code=500, detail="Failed to generate summary.")
+        return GeneralResponse(result=summary)
+    except Exception as e:
+        print(f"Error during summarization: {e}")
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
+
+# General fallback endpoint for unstructured prompts
+@app.post("/process", response_model=GeneralResponse)
+def process_general_prompt(request: ProcessRequest):
+    """Handles general prompts that don't fit other dedicated endpoints."""
+    print(f"Backend: Received general prompt: '{request.prompt}'. Content present: {len(request.content) > 0}")
+    try:
+        # Corrected: Using generate_response instead of get_completion
+        output_content = llm_client.generate_response(request.prompt)
+        if not output_content:
+            raise HTTPException(status_code=500, detail="Failed to get completion for general prompt.")
+        return GeneralResponse(result=output_content)
+    except Exception as e:
+        print(f"Error in general process endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"General prompt processing failed: {str(e)}")
+
+# This block allows running the server directly for development
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting backend server for development...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

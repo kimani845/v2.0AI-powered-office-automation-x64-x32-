@@ -1,0 +1,12 @@
+env
+*.env
+__pycache__
+*.pyc
+office_automation.spec
+.python-version
+config.json
+venv32
+venv64
+*%USERPROFILE%/
+*dist/
+*build/

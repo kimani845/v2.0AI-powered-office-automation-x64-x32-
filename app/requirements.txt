@@ -1,0 +1,32 @@
+flask
+flask-cors
+requests
+fastapi
+uvicorn
+uvicorn[standard]
+python-docx
+python-pptx
+# pywin32 only works on Windows
+pywin32; sys_platform == "win32"
+# wps-sdk-python
+
+openpyxl
+sypi
+sns
+scipy
+seaborn
+pandas
+matplotlib
+python-multipart
+pydantic
+email-validator
+openai
+google-generativeai
+
+python-dotenv
+msal
+pyinstaller
+
+llama-index==0.10.50
+llama-parse==0.4.0
+llama-index-llms-ollama

@@ -126,3 +126,5 @@ if __name__ == "__main__":
         print("Ensure you have run your PyInstaller-generated executables with '/regserver' as Administrator for both 32-bit and 64-bit versions.")
 
     input("\nPress Enter to exit.")
+
+

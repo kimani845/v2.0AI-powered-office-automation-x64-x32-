@@ -359,76 +359,182 @@ class WPSAddin:
         }
         threading.Thread(target=self._call_backend_task, args=("/create_cover_letter", payload)).start()
 
-# --- COM Server Registration Logic ---
-if __name__ == '__main__':
-    # Ensure pywin32 is installed: pip install pywin32
-    # Ensure pywin32 is correctly registered: python -m win32com.client.makepy -d
-    # Then run this script with /regserver or /unregserver as Administrator
-    # Example: python addin_client.py /regserver
-    # For a 32-bit COM server, use a 32-bit Python interpreter.
-    # For a 64-bit COM server, use a 64-bit Python interpreter.
+# # --- COM Server Registration Logic ---
+# if __name__ == '__main__':
+#     # Ensure pywin32 is installed: pip install pywin32
+#     # Ensure pywin32 is correctly registered: python -m win32com.client.makepy -d
+#     # Then run this script with /regserver or /unregserver as Administrator
+#     # Example: python addin_client.py /regserver
+#     # For a 32-bit COM server, use a 32-bit Python interpreter.
+#     # For a 64-bit COM server, use a 64-bit Python interpreter.
     
-    if len(sys.argv) > 1:
-        import win32com.server.register
+#     if len(sys.argv) > 1:
+#         import win32com.server.register
         
-        # Class object for the registration functions
-        classes_to_register = [WPSAddin]
+#         # Class object for the registration functions
+#         classes_to_register = [WPSAddin]
         
-        if sys.argv[1].lower() == '/regserver':
-            log_message("Direct registration command received.")
-            print("Registering AI Office Add-in Client (COM component and WPS entry)...")
-            try:
-                # 1. Register the COM component itself
-                win32com.server.register.RegisterClasses(*classes_to_register)
-                print(f"COM component '{WPSAddin._reg_progid_}' registered successfully.")
-                log_message("COM component registration successful.")
+#         if sys.argv[1].lower() == '/regserver':
+#             log_message("Direct registration command received.")
+#             print("Registering AI Office Add-in Client (COM component and WPS entry)...")
+#             try:
+#                 # 1. Register the COM component itself
+#                 win32com.server.register.RegisterClasses(*classes_to_register)
+#                 print(f"COM component '{WPSAddin._reg_progid_}' registered successfully.")
+#                 log_message("COM component registration successful.")
 
-                # 2. Manually update InprocServer32 to point to the current executable path
-                _update_inprocserver32_path(WPSAddin._reg_clsid_)
+#                 # 2. Manually update InprocServer32 to point to the current executable path
+#                 _update_inprocserver32_path(WPSAddin._reg_clsid_)
 
-                # 3. Register the WPS Office specific add-in entry
-                register_wps_addin_entry(WPSAddin._reg_clsid_, WPS_ADDIN_ENTRY_NAME)
+#                 # 3. Register the WPS Office specific add-in entry
+#                 register_wps_addin_entry(WPSAddin._reg_clsid_, WPS_ADDIN_ENTRY_NAME)
                 
-                print("All registrations complete.")
-            except Exception as e:
-                print(f"Registration failed: {e}") 
-                log_message(f"Registration failed: {traceback.format_exc()}")
-            input("Press Enter to continue...")
+#                 print("All registrations complete.")
+#             except Exception as e:
+#                 print(f"Registration failed: {e}") 
+#                 log_message(f"Registration failed: {traceback.format_exc()}")
+#             input("Press Enter to continue...")
 
-        elif sys.argv[1].lower() == '/unregserver':
-            log_message("Direct unregistration command received.")
-            print("Unregistering AI Office Add-in Client (COM component and WPS entry)...")
-            try:
-                # 1. Unregister the COM component itself
-                win32com.server.register.UnregisterClasses(*classes_to_register)
-                print(f"COM component '{WPSAddin._reg_progid_}' unregistered successfully.")
-                log_message("COM component unregistration successful.")
+#         elif sys.argv[1].lower() == '/unregserver':
+#             log_message("Direct unregistration command received.")
+#             print("Unregistering AI Office Add-in Client (COM component and WPS entry)...")
+#             try:
+#                 # 1. Unregister the COM component itself
+#                 win32com.server.register.UnregisterClasses(*classes_to_register)
+#                 print(f"COM component '{WPSAddin._reg_progid_}' unregistered successfully.")
+#                 log_message("COM component unregistration successful.")
 
-                # 2. Unregister the WPS Office specific add-in entry
-                unregister_wps_addin_entry(WPS_ADDIN_ENTRY_NAME)
+#                 # 2. Unregister the WPS Office specific add-in entry
+#                 unregister_wps_addin_entry(WPS_ADDIN_ENTRY_NAME)
                 
-                print("All unregistrations complete.")
-            except Exception as e:
-                print(f"Unregistration failed: {e}")
-                log_message(f"Unregistration failed: {traceback.format_exc()}")
-            input("Press Enter to continue...")
-        else:
-            print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
-            input("Press Enter to exit.")
-    else:
-        # If no arguments, and not running as a COM server, keep the script alive for debugging/inspection
-        # You might want to remove this block in a final bundled application
-        print("Running in COM server mode. Awaiting calls from WPS Office.")
-        log_message("addin_client.py started in direct execution mode (no /regserver or /unregserver).")
-        # Keep the script running so WPS can connect if it's already registered and trying to load.
-        # This is typically only useful for debugging; in a deployed scenario, WPS would launch it.
+#                 print("All unregistrations complete.")
+#             except Exception as e:
+#                 print(f"Unregistration failed: {e}")
+#                 log_message(f"Unregistration failed: {traceback.format_exc()}")
+#             input("Press Enter to continue...")
+#         else:
+#             print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
+#             input("Press Enter to exit.")
+#     else:
+#         # If no arguments, and not running as a COM server, keep the script alive for debugging/inspection
+#         # You might want to remove this block in a final bundled application
+#         print("Running in COM server mode. Awaiting calls from WPS Office.")
+#         log_message("addin_client.py started in direct execution mode (no /regserver or /unregserver).")
+#         # Keep the script running so WPS can connect if it's already registered and trying to load.
+#         # This is typically only useful for debugging; in a deployed scenario, WPS would launch it.
+#         try:
+#             # Prevent script from exiting immediately if not registering/unregistering
+#             import pythoncom
+#             pythoncom.PumpMessages()
+#         except KeyboardInterrupt:
+#             print("\nExiting COM server client.")
+#         except Exception as e:
+#             log_message(f"Error in COM message pump: {e}")
+#             print(f"\nError in COM message pump: {e}")
+#         input("Press Enter to exit.")
+if __name__ == '__main__':
+    # This block performs a fully manual registration to avoid pywin32 bugs.
+    
+    def manual_register_server(cls):
+        """Manually creates all necessary registry keys for the COM server and WPS."""
+        import winreg
+        import pythoncom
+
+        clsid = cls._reg_clsid_
+        progid = cls._reg_progid_
+        desc = cls._reg_desc_
+
+        is_64bit_process = sys.maxsize > 2**32
+        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+
+        log_message(f"Starting manual registration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+
         try:
-            # Prevent script from exiting immediately if not registering/unregistering
-            import pythoncom
-            pythoncom.PumpMessages()
-        except KeyboardInterrupt:
-            print("\nExiting COM server client.")
+            # Step 1: Create the main CLSID key
+            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", 0, winreg.KEY_WRITE | reg_view_flag) as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
+                log_message(f"Created CLSID key with description.")
+
+                # Step 2: Create the ProgID subkey
+                with winreg.CreateKeyEx(key, "ProgID", 0, winreg.KEY_WRITE) as progid_key:
+                    winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
+                    log_message(f"Created ProgID subkey.")
+
+                # Step 3: Create the InprocServer32 subkey with the CORRECT DLL path
+                with winreg.CreateKeyEx(key, "InprocServer32", 0, winreg.KEY_WRITE) as inproc_key:
+                    pythoncom_path = pythoncom.__file__
+                    winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, pythoncom_path)
+                    log_message(f"Created InprocServer32 subkey pointing to: {pythoncom_path}")
+
+            # Step 4: Create the ProgID-to-CLSID mapping
+            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, progid, 0, winreg.KEY_WRITE | reg_view_flag) as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
+                with winreg.CreateKeyEx(key, "CLSID", 0, winreg.KEY_WRITE) as clsid_key:
+                    winreg.SetValueEx(clsid_key, "", 0, winreg.REG_SZ, clsid)
+                    log_message(f"Created ProgID-to-CLSID mapping.")
+            
+            # Step 5: Create the specific entry for WPS Office
+            wps_addin_path = f"Software\\Kingsoft\\Office\\Addins\\{progid}"
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addin_path, 0, winreg.KEY_WRITE) as key:
+                winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
+                winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+                winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) # 3 = Load at startup
+                log_message(f"Created specific WPS Add-in entry at HKCU\\{wps_addin_path}")
+
+            print("Manual registration successful.")
+            log_message("Manual registration successful.")
+
         except Exception as e:
-            log_message(f"Error in COM message pump: {e}")
-            print(f"\nError in COM message pump: {e}")
+            print(f"Manual registration failed: {e}")
+            log_message(f"Manual registration failed:\n{traceback.format_exc()}")
+            input("Press Enter to continue...")
+
+
+    def manual_unregister_server(cls):
+        """Manually removes all registry keys."""
+        import winreg
+
+        clsid = cls._reg_clsid_
+        progid = cls._reg_progid_
+
+        is_64bit_process = sys.maxsize > 2**32
+        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+        
+        log_message(f"Starting manual unregistration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+
+        try:
+            # Delete keys in reverse order of creation
+            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, f"Software\\Kingsoft\\Office\\Addins\\{progid}", 0, 0)
+            log_message("Deleted WPS Add-in entry.")
+        except FileNotFoundError: pass
+        except Exception as e: log_message(f"Could not delete WPS Add-in key: {e}")
+
+        try:
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"{progid}\\CLSID", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, progid, reg_view_flag, 0)
+            log_message("Deleted ProgID mapping.")
+        except FileNotFoundError: pass
+        except Exception as e: log_message(f"Could not delete ProgID key: {e}")
+
+        try:
+            # Recursively delete the CLSID key and all its subkeys
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", reg_view_flag, 0)
+            log_message("Deleted CLSID key.")
+        except FileNotFoundError: pass
+        except Exception as e: log_message(f"Could not delete CLSID key: {e}")
+
+        print("Manual unregistration complete.")
+        log_message("Manual unregistration complete.")
+
+
+    # --- Main Command Logic ---
+    if len(sys.argv) > 1:
+        if sys.argv[1].lower() == '/regserver':
+            manual_register_server(WPSAddin)
+        elif sys.argv[1].lower() == '/unregserver':
+            manual_unregister_server(WPSAddin)
+    else:
+        print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
         input("Press Enter to exit.")

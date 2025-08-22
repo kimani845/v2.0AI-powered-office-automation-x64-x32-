@@ -9,6 +9,27 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import docx
 
+
+# This block makes the script "bundle-aware" and correctly loads the .env file.
+from dotenv import load_dotenv
+
+if getattr(sys, 'frozen', False):
+    # We are running in a bundled executable.
+    # sys.executable is the path to the .exe file.
+    # We want to find the .env file in the same directory as the .exe.
+    application_path = os.path.dirname(sys.executable)
+    dotenv_path = os.path.join(application_path, '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+    else:
+        # This is a critical error if the .env file is missing in the bundle.
+        # You can add file logging here if you want to debug this on a client's machine.
+        print("FATAL: Bundled .env file not found!")
+else:
+    # We are running in a normal Python environment (development mode).
+    # load_dotenv() will automatically find the .env in the project root.
+    load_dotenv()
+
 # Path Setup
 if getattr(sys, 'frozen', False):
     base_path = sys._MEIPASS

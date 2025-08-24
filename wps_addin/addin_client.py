@@ -11,10 +11,10 @@ import threading
 import requests
 import win32com.client
 import win32api
-import winreg # Added for registry manipulation
+import winreg # For registry manipulation
 from tkinter import simpledialog, Tk
 
-# --- Configuration ---
+# Configuration
 BACKEND_URL = "http://127.0.0.1:8000"
 
 # --- Terminal Logging for Debugging ---
@@ -160,7 +160,7 @@ def _update_inprocserver32_path(clsid):
         return False
 
 
-# --- Ribbon Callback Class ---
+# Ribbon Callback Class
 class WPSAddin:
     # IMPORTANT: Ensure this CLSID matches the one in your .py file and other registration scripts.
     _reg_clsid_ = "{bdb1ed0a-14d7-414d-a68d-a2df20b5685a}"
@@ -359,6 +359,7 @@ class WPSAddin:
         }
         threading.Thread(target=self._call_backend_task, args=("/create_cover_letter", payload)).start()
 
+
 # # --- COM Server Registration Logic ---
 # if __name__ == '__main__':
 #     # Ensure pywin32 is installed: pip install pywin32
@@ -432,6 +433,89 @@ class WPSAddin:
 #             log_message(f"Error in COM message pump: {e}")
 #             print(f"\nError in COM message pump: {e}")
 #         input("Press Enter to exit.")
+
+
+# # --- FINAL, ROBUST COM Server Registration Logic ---
+# if __name__ == '__main__':
+#     # This block now includes a post-registration fix for bundled executables.
+    
+#     def fix_inproc_server_for_exe():
+#         """
+#         When pywin32 registers a bundled .exe, it incorrectly sets the
+#         InprocServer32 path to the .exe itself. This function corrects it
+#         to point to the pythoncomXX.dll, which is what host applications
+#         like WPS Office expect.
+#         """
+#         import winreg
+#         import pywin32_system32 # This is a special package that helps find the DLLs
+        
+#         # Determine if we are running as a 32-bit or 64-bit process
+#         is_64bit = sys.maxsize > 2**32
+        
+#         # Find the correct pythoncom dll
+#         pythoncom_path = os.path.join(pywin32_system32.get_paths()[-1], f"pythoncom{sys.version_info.major}{sys.version_info.minor}.dll")
+#         if not os.path.exists(pythoncom_path):
+#             log_message(f"CRITICAL: Could not find pythoncom DLL at {pythoncom_path}")
+#             return
+
+#         log_message(f"Fixing InprocServer32 path to point to: {pythoncom_path}")
+
+#         # Choose the correct registry view (32-bit or 64-bit)
+#         reg_view = winreg.KEY_WOW64_32KEY if not is_64bit else winreg.KEY_WOW64_64KEY
+        
+#         try:
+#             # Construct the path to the InprocServer32 key
+#             key_path = f"CLSID\\{WPSAddin._reg_clsid_}\\InprocServer32"
+            
+#             # Open the key with write access
+#             with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, key_path, 0, winreg.KEY_SET_VALUE | reg_view) as key:
+#                 # Overwrite the (Default) value with the correct DLL path
+#                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, pythoncom_path)
+#                 log_message(f"Successfully corrected InprocServer32 key at {key_path}")
+
+#         except Exception as e:
+#             log_message(f"ERROR: Failed to fix InprocServer32 key. This may cause loading issues. Error: {e}\n{traceback.format_exc()}")
+            
+#     # --- Main Registration Logic ---
+#     if len(sys.argv) > 1:
+#         import win32com.server.register
+        
+#         classes_to_register = [WPSAddin]
+        
+#         if sys.argv[1].lower() == '/regserver':
+#             log_message("Direct registration command received.")
+#             print("Registering AI Office Add-in Client...")
+#             try:
+#                 # Step 1: Perform the standard registration
+#                 win32com.server.register.RegisterClasses(*classes_to_register)
+                
+#                 # Step 2: If running as a bundled exe, apply the fix
+#                 if getattr(sys, 'frozen', False):
+#                     fix_inproc_server_for_exe()
+
+#                 print("Registration complete.")
+#                 log_message("Registration successful.")
+#             except Exception as e:
+#                 print(f"Registration failed: {e}")
+#                 log_message(f"Registration failed: {traceback.format_exc()}")
+#                 input("Press Enter to continue...")
+
+#         elif sys.argv[1].lower() == '/unregserver':
+#             log_message("Direct unregistration command received.")
+#             print("Unregistering AI Office Add-in Client...")
+#             try:
+#                 win32com.server.register.UnregisterClasses(*classes_to_register)
+#                 print("Unregistration complete.")
+#                 log_message("Unregistration successful.")
+#             except Exception as e:
+#                 print(f"Unregistration failed: {e}")
+#                 log_message(f"Unregistration failed: {traceback.format_exc()}")
+#                 input("Press Enter to continue...")
+#     else:
+#         print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
+#         input("Press Enter to exit.")
+
+
 if __name__ == '__main__':
     # This block performs a fully manual registration to avoid pywin32 bugs.
     
@@ -478,7 +562,7 @@ if __name__ == '__main__':
             with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addin_path, 0, winreg.KEY_WRITE) as key:
                 winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
                 winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
-                winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) # 3 = Load at startup
+                winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) 
                 log_message(f"Created specific WPS Add-in entry at HKCU\\{wps_addin_path}")
 
             print("Manual registration successful.")
@@ -529,7 +613,7 @@ if __name__ == '__main__':
         log_message("Manual unregistration complete.")
 
 
-    # --- Main Command Logic ---
+    # Main Command Logic 
     if len(sys.argv) > 1:
         if sys.argv[1].lower() == '/regserver':
             manual_register_server(WPSAddin)

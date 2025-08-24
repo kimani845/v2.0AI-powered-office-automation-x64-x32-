@@ -7,31 +7,6 @@ requests==2.32.3
 pyinstaller
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # # requirements-32.txt
 # # For use with a 32-bit Python interpreter.
 # # Note: Data science libraries are pinned to older versions for 32-bit compatibility.

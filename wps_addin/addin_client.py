@@ -13,14 +13,34 @@ import win32com.client
 import win32api
 import winreg # For registry manipulation
 from tkinter import simpledialog, Tk
+import pythoncom # New import for COM object handling
 
 # Configuration
 BACKEND_URL = "http://127.0.0.1:8000"
 
-# --- Terminal Logging for Debugging ---
+def get_log_file_path():
+    """Determines the correct path for the log file (next to the exe or script)."""
+    if getattr(sys, 'frozen', False):
+        log_directory = os.path.dirname(sys.executable)
+    else:
+        # Assumes this script is in a subfolder like 'package' or 'wps_addin'
+        log_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(log_directory, "wps_addin_log.txt")
+
+LOG_FILE_PATH = get_log_file_path()
+
 def log_message(message):
-    """Writes a message with a timestamp to the terminal (stdout)."""
-    print(f"[{datetime.datetime.now()}] {message}")
+    """Writes a message with a timestamp to the log file."""
+    try:
+        with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] {message}\n")
+    except Exception as e:
+        print(f"!!! FAILED TO WRITE TO LOG FILE AT {LOG_FILE_PATH}: {e} !!!")
+
+# # --- Terminal Logging for Debugging ---
+# def log_message(message):
+#     """Writes a message with a timestamp to the terminal (stdout)."""
+#     print(f"[{datetime.   datetime.now()}] {message}")
 
 # --- PyInstaller Resource Path Helper ---
 def resource_path(relative_path):
@@ -52,127 +72,21 @@ def insert_text_at_cursor(text):
     else:
         log_message("Warning: Could not find an active WPS document to insert text into.")
 
-# --- Registry Functions for WPS Office Add-in Entry ---
-
 # The name WPS Office uses for your add-in entry.
-# This is distinct from the COM component's ProgID but points to its CLSID.
-WPS_ADDIN_ENTRY_NAME = "AIAddin.Connect"
-
-def register_wps_addin_entry(guid, wps_entry_name):
-    """
-    Registers the explicit add-in entry for WPS Office under HKEY_CURRENT_USER.
-    This function targets the current user's registry.
-    """
-    log_message(f"Attempting to register WPS Office Add-in entry for: {wps_entry_name}")
-    wps_addin_key_path = f"Software\\Kingsoft\\Office\\Addins\\{wps_entry_name}"
-    
-    try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, wps_addin_key_path)
-        log_message(f"[SUCCESS] Created/Opened registry key: HKEY_CURRENT_USER\\{wps_addin_key_path}")
-
-        winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, "AI Office Automation Add-in")
-        winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Addin")
-        winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) # Load at startup
-        winreg.SetValueEx(key, "CommandLineSafe", 0, winreg.REG_DWORD, 0) # Not command line safe
-        winreg.SetValueEx(key, "CLSID", 0, winreg.REG_SZ, guid)
-        log_message(f"[SUCCESS] Set values for {wps_entry_name}. Linked to CLSID: {guid}")
-
-        winreg.CloseKey(key)
-        print(f"WPS Office Add-in '{wps_entry_name}' registration complete for current user.")
-        return True
-    except PermissionError:
-        print("\n[FAILURE] Permission denied for WPS Office Add-in entry. Run script as Administrator.")
-        return False
-    except Exception as e:
-        log_message(f"[ERROR] WPS Office Add-in entry registration failed: {e}\n{traceback.format_exc()}")
-        print(f"\n[ERROR] WPS Office Add-in entry registration failed: {e}")
-        return False
-
-def unregister_wps_addin_entry(wps_entry_name):
-    """
-    Unregisters the explicit add-in entry for WPS Office under HKEY_CURRENT_USER.
-    """
-    log_message(f"Attempting to unregister WPS Office Add-in entry for: {wps_entry_name}")
-    wps_addin_key_path = f"Software\\Kingsoft\\Office\\Addins\\{wps_entry_name}"
-
-    try:
-        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, wps_addin_key_path)
-        print(f"WPS Office Add-in '{wps_entry_name}' unregistration complete for current user.")
-        log_message(f"[SUCCESS] Unregistered WPS Office Add-in entry: {wps_entry_name}")
-        return True
-    except FileNotFoundError:
-        print(f"WPS Office Add-in entry for '{wps_entry_name}' not found. Already unregistered or never existed.")
-        log_message(f"[INFO] WPS Office Add-in entry '{wps_entry_name}' not found for unregistration.")
-        return True # Considered successful if it's already gone
-    except PermissionError:
-        print("\n[FAILURE] Permission denied for WPS Office Add-in entry unregistration. Run script as Administrator.")
-        return False
-    except Exception as e:
-        log_message(f"[ERROR] WPS Office Add-in entry unregistration failed: {e}\n{traceback.format_exc()}")
-        print(f"\n[ERROR] WPS Office Add-in entry unregistration failed: {e}")
-        return False
-
-def _update_inprocserver32_path(clsid):
-    """
-    Manually updates the InprocServer32 key for a given CLSID to point to the
-    currently running executable. This is crucial for PyInstaller bundles.
-    """
-    log_message(f"Attempting to update InprocServer32 for CLSID: {clsid}")
-    executable_path = sys.executable
-    
-    # Determine the registry view based on the current process's bitness
-    # This assumes sys.executable matches the bitness of the registry view we want to modify.
-    # For a 64-bit Python/EXE, it defaults to 64-bit view.
-    # For a 32-bit Python/EXE on 64-bit Windows, it defaults to 32-bit view via WoW64.
-    if sys.maxsize > 2**32:
-        # Running as a 64-bit process
-        reg_flags = winreg.KEY_READ | winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY
-        arch_name = "64-bit"
-    else:
-        # Running as a 32-bit process
-        reg_flags = winreg.KEY_READ | winreg.KEY_SET_VALUE | winreg.KEY_WOW64_32KEY
-        arch_name = "32-bit"
-
-    try:
-        # Open the CLSID key in HKLM
-        clsid_key_path = f"SOFTWARE\\Classes\\CLSID\\{clsid}"
-        clsid_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, clsid_key_path, 0, reg_flags)
-
-        # Open or create the InprocServer32 subkey
-        inproc_key = winreg.CreateKey(clsid_key, "InprocServer32")
-        
-        # Set the default value of InprocServer32 to the executable path
-        winreg.SetValueEx(inproc_key, None, 0, winreg.REG_SZ, executable_path) # Set default value
-        winreg.SetValueEx(inproc_key, "ThreadingModel", 0, winreg.REG_SZ, "Both") # Standard threading model
-
-        winreg.CloseKey(inproc_key)
-        winreg.CloseKey(clsid_key)
-        log_message(f"[SUCCESS] InprocServer32 for {clsid} updated to '{executable_path}' ({arch_name} view).")
-        print(f"InprocServer32 path set to: '{executable_path}' ({arch_name} view).")
-        return True
-    except PermissionError:
-        log_message(f"[FAILURE] Permission denied when updating InprocServer32 for {clsid}. Run as Administrator.")
-        print(f"[FAILURE] Permission denied when updating InprocServer32. Ensure executable is run as Administrator.")
-        return False
-    except Exception as e:
-        log_message(f"[ERROR] Failed to update InprocServer32 for {clsid}: {e}\n{traceback.format_exc()}")
-        print(f"[ERROR] Failed to update InprocServer32: {e}")
-        return False
-
+WPS_ADDIN_ENTRY_NAME = "AIAddinConnect"
 
 # Ribbon Callback Class
 class WPSAddin:
     # IMPORTANT: Ensure this CLSID matches the one in your .py file and other registration scripts.
     _reg_clsid_ = "{bdb1ed0a-14d7-414d-a68d-a2df20b5685a}"
-    _reg_desc_ = "AI Office Automation Add-in"
-    # SUGGESTED CHANGE: Explicitly use the constant here for consistency
-    _reg_progid_ = WPS_ADDIN_ENTRY_NAME 
+    _reg_desc_ = "AI Office Automation "
+    _reg_progid_ = WPS_ADDIN_ENTRY_NAME
     _reg_class_spec_ = "addin_client.WPSAddin"
 
     _public_methods_ = [
         'OnRunPrompt', 'OnAnalyzeDocument', 'OnSummarizeDocument', 'OnLoadImage',
         'GetTabLabel', 'GetGroupLabel', 'GetRunPromptLabel', 'GetAnalyzeDocLabel',
-        'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel', 
+        'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel',
         'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter'
     ]
     _public_attrs_ = ['ribbon']
@@ -232,7 +146,6 @@ class WPSAddin:
         wps_app = get_wps_application()
         if wps_app:
             try:
-                # Get the current language ID from WPS Office
                 lang_id = wps_app.LanguageSettings.LanguageID(1) # msoAppLanguageIDInstall
             except Exception:
                 pass # Fallback to default lang_id
@@ -251,14 +164,9 @@ class WPSAddin:
         image_path = resource_path(f"{imageName}.png")
         log_message(f"Attempting to load image: {image_path}")
         try:
-            # win32api.LoadImage requires an absolute path. The resource_path helper handles this.
-            # 0x10 is LR_LOADFROMFILE
-            img_handle = win32api.LoadImage(0, image_path, 0, 32, 32, 0x10)
+            img_handle = win32api.LoadImage(0, image_path, 0, 32, 32, 0x10) # 0x10 is LR_LOADFROMFILE
             log_message(f"Successfully loaded image '{imageName}'.")
             return img_handle
-        except FileNotFoundError:
-            log_message(f"ERROR: Image file not found for '{imageName}' at {image_path}.\n{traceback.format_exc()}")
-            return None
         except Exception as e:
             log_message(f"ERROR: Failed to load image '{imageName}' from {image_path}: {e}\n{traceback.format_exc()}")
             return None
@@ -267,8 +175,7 @@ class WPSAddin:
         log_message(f"Calling backend endpoint: {endpoint} with payload: {list(payload.keys())}")
         try:
             insert_text_at_cursor(self._get_localized_string("contacting_server"))
-            # Increased timeout for potentially long-running AI tasks
-            response = requests.post(f"{BACKEND_URL}{endpoint}", json=payload, timeout=300) 
+            response = requests.post(f"{BACKEND_URL}{endpoint}", json=payload, timeout=300)
             response.raise_for_status()
             result = response.json().get("result", "")
             header = self._get_localized_string("result_header")
@@ -287,9 +194,9 @@ class WPSAddin:
             insert_text_at_cursor(error_msg)
 
     def OnRunPrompt(self, c):
-        root = Tk(); root.withdraw() # Create and immediately hide Tkinter root window
+        root = Tk(); root.withdraw()
         prompt = simpledialog.askstring(self._get_localized_string("prompt_title"), self._get_localized_string("prompt_message"))
-        root.destroy() # Destroy the root window after interaction
+        root.destroy()
         if not prompt: return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
         threading.Thread(target=self._call_backend_task, args=("/process", {"prompt": prompt})).start()
 
@@ -298,7 +205,7 @@ class WPSAddin:
         if not wps_app or wps_app.Documents.Count == 0: return insert_text_at_cursor(self._get_localized_string("no_active_doc"))
         content = wps_app.ActiveDocument.Content.Text
         threading.Thread(target=self._call_backend_task, args=("/analyze", {"content": content, "prompt": "Analyze the document content."})).start()
-        
+
     def OnSummarizeDocument(self, c):
         wps_app = get_wps_application()
         if not wps_app or wps_app.Documents.Count == 0: return insert_text_at_cursor(self._get_localized_string("no_active_doc"))
@@ -313,13 +220,7 @@ class WPSAddin:
             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
         audience = simpledialog.askstring(self._get_localized_string("prompt_title"), self._get_localized_string("memo_audience"))
         root.destroy()
-        payload = {
-            "doc_type": "memo",
-            "topic": topic,
-            "audience": audience or "Internal Team",
-            "length": "medium",
-            "tone": "formal"
-        }
+        payload = {"doc_type": "memo", "topic": topic, "audience": audience or "Internal Team"}
         threading.Thread(target=self._call_backend_task, args=("/create_memo", payload)).start()
 
     def OnCreateMinutes(self, c):
@@ -332,11 +233,7 @@ class WPSAddin:
         info = simpledialog.askstring(self._get_localized_string("prompt_title"), self._get_localized_string("minutes_info"))
         root.destroy()
         payload = {
-            "doc_type": "minutes",
-            "topic": topic,
-            "audience": "Meeting Attendees",
-            "length": "medium",
-            "tone": "formal",
+            "doc_type": "minutes", "topic": topic, "audience": "Meeting Attendees",
             "members_present": [name.strip() for name in (attendees or "").split(',') if name.strip()],
             "data_sources": [data.strip() for data in (info or "").split(',') if data.strip()]
         }
@@ -350,25 +247,442 @@ class WPSAddin:
             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
         audience = simpledialog.askstring(self._get_localized_string("prompt_title"), self._get_localized_string("cover_letter_audience"))
         root.destroy()
-        payload = {
-            "doc_type": "cover_letter",
-            "topic": topic,
-            "audience": audience or "Hiring Manager",
-            "length": "medium",
-            "tone": "formal"
-        }
+        payload = {"doc_type": "cover_letter", "topic": topic, "audience": audience or "Hiring Manager"}
         threading.Thread(target=self._call_backend_task, args=("/create_cover_letter", payload)).start()
 
 
+if __name__ == '__main__':
+    # This block performs a fully manual registration to avoid pywin32 bugs
+    # and handles multiple possible WPS Office registry paths.
+
+    # def manual_register_server(cls):
+    #     """
+    #     Manually creates all necessary registry keys.
+    #     This version now tries multiple common WPS Office registry paths.
+    #     """
+    
+    #     clsid = cls._reg_clsid_
+    #     progid = cls._reg_progid_
+    #     desc = cls._reg_desc_
+
+    #     is_64bit_process = sys.maxsize > 2**32
+    #     reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+
+    #     log_message(f"Starting manual registration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+
+        # # --- Steps 1-4: Register the core COM Server ---
+        # try:
+        #     with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", 0, winreg.KEY_WRITE | reg_view_flag) as key:
+        #         winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
+        #     log_message("Created CLSID key with description.")
+            
+        #     with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", 0, winreg.KEY_WRITE | reg_view_flag) as progid_key:
+        #         winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
+        #     log_message("Created ProgID subkey.")
+            
+        #     with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", 0, winreg.KEY_WRITE | reg_view_flag) as inproc_key:
+        #         pythoncom_path = pythoncom.__file__
+        #         winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, pythoncom_path)
+        #     log_message(f"Created InprocServer32 subkey pointing to: {pythoncom_path}")
+            
+        #     with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, progid, 0, winreg.KEY_WRITE | reg_view_flag) as key:
+        #         with winreg.CreateKeyEx(key, "CLSID", 0, winreg.KEY_WRITE) as clsid_key:
+        #             winreg.SetValueEx(clsid_key, "", 0, winreg.REG_SZ, clsid)
+        #     log_message("Created ProgID-to-CLSID mapping.")
+            
+        # except Exception as e:
+        #     log_message(f"FATAL: Failed to register the core COM server: {e}\n{traceback.format_exc()}")
+        #     print(f"FATAL: Failed to register the core COM server. Please run as Administrator.")
+        #     return
+
+        # # --- Step 5: Create the specific entry for WPS Office (UPDATED LOGIC) ---
+        # wps_addin_paths = [
+        #     f"Software\\Kingsoft\\Office\\Addins\\{progid}",
+        #     f"Software\\WPS\\Office\\Addins\\{progid}",
+        #     f"Software\\WPS Office\\Addins\\{progid}"
+        # ]
+        # # wps_addin_paths = [
+        # #     f"Software\\WPS Office\\Addins\\{progid}",
+        # #     f"Software\\WPS\\Office\\Addins\\{progid}",
+        # #     f"Software\\Kingsoft\\Office\\Addins\\{progid}"
+        # # ]
+        # # wps_addin_paths = [
+        # #     f"Software\\WPS Office\\Addins\\{progid}",
+        # #     f"Software\\WPS\\Office\\Addins\\{progid}"
+        # # ]
+        
+        # registration_succeeded = False
+        # for path in wps_addin_paths:
+        #     log_message(f"Attempting to register WPS add-in at HKCU\\{path}...")
+        #     try:
+        #         with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE) as key:
+        #             winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
+        #             winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+        #             winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3)
+        #             winreg.SetValueEx(key, "CLSID", 0, winreg.REG_SZ, clsid)
+                
+        #         log_message(f"SUCCESS: Created specific WPS Add-in entry at HKCU\\{path}")
+        #         print(f"SUCCESS: Add-in registered at registry path: HKCU\\{path}")
+        #         registration_succeeded = True
+        #         break
+        #     except Exception as e:
+        #         log_message(f"INFO: Could not register at path '{path}'. Error: {e}. Trying next path.")
+
+        # if registration_succeeded:
+        #     print("Manual registration successful.")
+        #     log_message("Manual registration successful.")
+        # else:
+        #     print("\n[FAILURE] Manual registration FAILED. Could not write to any known WPS Office registry locations.")
+        #     log_message("Manual registration FAILED. Could not write to any known WPS Office registry locations.")
+        
+    def manual_register_server(cls):
+        """Manually creates all necessary registry keys for the COM server and WPS."""
+        
+        clsid = cls._reg_clsid_
+        progid = cls._reg_progid_
+        desc = cls._reg_desc_
+
+        is_64bit_process = sys.maxsize > 2**32
+        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+
+        log_message(f"Starting manual registration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+
+        try:
+            # Step 1 & 2: Create CLSID key and ProgID subkey
+            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", 0, winreg.KEY_WRITE | reg_view_flag) as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
+                with winreg.CreateKeyEx(key, "ProgID", 0, winreg.KEY_WRITE) as progid_key:
+                    winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
+
+                # Step 3: Create the InprocServer32 subkey with the CORRECT DLL path
+                with winreg.CreateKeyEx(key, "InprocServer32", 0, winreg.KEY_WRITE) as inproc_key:
+                    # Gets the path to the pythoncom DLL, which is what WPS needs to load.
+                    pythoncom_path = pythoncom.__file__
+                    
+                    # Write the correct DLL path to the (Default) value.
+                    winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, pythoncom_path)
+                    
+                    # The "ThreadingModel" is a best practice for COM servers.
+                    winreg.SetValueEx(inproc_key, "ThreadingModel", 0, winreg.REG_SZ, "Apartment")
+                    
+                    log_message(f"Created InprocServer32 subkey pointing to the correct DLL: {pythoncom_path}")
+
+            # Step 4: Create the ProgID-to-CLSID mapping
+            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, progid, 0, winreg.KEY_WRITE | reg_view_flag) as key:
+                with winreg.CreateKeyEx(key, "CLSID", 0, winreg.KEY_WRITE) as clsid_key:
+                    winreg.SetValueEx(clsid_key, "", 0, winreg.REG_SZ, clsid)
+            log_message("Core COM registration successful.")
+
+            # Step 5: Create the specific entry for WPS Office
+            wps_addin_path = f"Software\\Kingsoft\\Office\\Addins\\{progid}"
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addin_path, 0, winreg.KEY_WRITE) as key:
+                winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
+                winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+                winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3)
+                log_message(f"Created specific WPS Add-in entry at HKCU\\{wps_addin_path}")
+
+            print("Manual registration successful.")
+            log_message("Manual registration successful.")
+
+        except Exception as e:
+            print(f"Manual registration failed: {e}")
+            log_message(f"Manual registration failed:\n{traceback.format_exc()}")
+            input("Press Enter to continue...")
 
 
-# # --- FINAL, MANUAL COM Server REGISTRATION LOGIC TO AVOID PYWIN32 BUGS ---
+
+    def manual_unregister_server(cls):
+        """
+        Manually removes all registry keys.
+        --- UPDATED ---
+        This version now tries to unregister from multiple common WPS Office registry paths.
+        """
+        import winreg
+
+        clsid = cls._reg_clsid_
+        progid = cls._reg_progid_
+
+        is_64bit_process = sys.maxsize > 2**32
+        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+
+        log_message(f"Starting manual unregistration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+
+        # --- Step 1: Delete WPS Office entry from all potential locations (UPDATED LOGIC) ---
+        wps_addin_paths = [
+            f"Software\\Kingsoft\\Office\\Addins\\{progid}",
+            f"Software\\WPS\\Office\\Addins\\{progid}",
+            f"Software\\WPS Office\\Addins\\{progid}"
+        ]
+        for path in wps_addin_paths:
+            try:
+                winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, path, 0, 0)
+                log_message(f"Successfully deleted WPS Add-in key from HKCU\\{path}.")
+                print(f"Removed registry key: HKCU\\{path}")
+            except FileNotFoundError:
+                log_message(f"INFO: WPS Add-in key not found at HKCU\\{path}. Skipping.")
+            except Exception as e:
+                log_message(f"WARNING: Could not delete WPS Add-in key from {path}. Error: {e}")
+
+        # --- Step 2 & 3: Delete the core COM Server ---
+        try:
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"{progid}\\CLSID", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, progid, reg_view_flag, 0)
+            log_message("Deleted ProgID mapping.")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log_message(f"Could not delete ProgID key: {e}")
+
+        try:
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", reg_view_flag, 0)
+            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", reg_view_flag, 0)
+            log_message("Deleted CLSID key.")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log_message(f"Could not delete CLSID key: {e}")
+
+        print("Manual unregistration complete.")
+        log_message("Manual unregistration complete.")
+
+
+    # Main Command Logic
+    if len(sys.argv) > 1:
+        if sys.argv[1].lower() == '/regserver':
+            manual_register_server(WPSAddin)
+        elif sys.argv[1].lower() == '/unregserver':
+            manual_unregister_server(WPSAddin)
+    else:
+        print("This is a COM server client for a WPS Office add-in.")
+        print("Use '/regserver' to register or '/unregserver' to unregister.")
+        input("Press Enter to exit.")
+
+
+# """
+# This script runs as a COM server client to provide an AI Assistant add-in for WPS Office.
+# Fixed version addressing common WPS Office add-in loading issues.
+# """
+# import datetime
+# import traceback
+# import os
+# import sys
+# import threading
+# import requests
+# import win32com.client
+# import win32api
+# import winreg
+# from tkinter import simpledialog, Tk
+
+# # Configuration - FIXED: Corrected IP address
+# BACKEND_URL = "http://127.0.0.1:8000"
+
+# # FIXED: Consistent naming
+# WPS_ADDIN_ENTRY_NAME = "AIAddin.Connect"
+
+# def log_message(message):
+#     """Writes a message with a timestamp to the terminal (stdout)."""
+#     print(f"[{datetime.datetime.now()}] {message}")
+
+# def resource_path(relative_path):
+#     """ Get absolute path to resource, works for dev and for PyInstaller bundling """
+#     try:
+#         base_path = sys._MEIPASS
+#     except Exception:
+#         base_path = os.path.abspath(".")
+#     return os.path.join(base_path, relative_path)
+
+# def get_wps_application():
+#     """Gets the running WPS Writer Application object."""
+#     try:
+#         return win32com.client.GetActiveObject("kwps.Application")
+#     except Exception as e:
+#         log_message(f"Error getting WPS Application object: {e}")
+#         return None
+
+# def insert_text_at_cursor(text):
+#     """Inserts text into the active document at the current cursor position."""
+#     wps_app = get_wps_application()
+#     if wps_app and wps_app.Documents.Count > 0:
+#         try:
+#             wps_app.Selection.TypeText(Text=text)
+#             log_message("Text successfully inserted into active WPS document.")
+#         except Exception as e:
+#             log_message(f"Error inserting text into WPS document: {e}\n{traceback.format_exc()}")
+#     else:
+#         log_message("Warning: Could not find an active WPS document to insert text into.")
+
+# class WPSAddin:
+#     _reg_clsid_ = "{bdb1ed0a-14d7-414d-a68d-a2df20b5685a}"
+#     _reg_desc_ = "AI Office Automation Add-in"
+#     _reg_progid_ = WPS_ADDIN_ENTRY_NAME  # FIXED: Now consistent
+#     _reg_class_spec_ = "addin_client.WPSAddin"
+
+#     _public_methods_ = [
+#         'OnRunPrompt', 'OnAnalyzeDocument', 'OnSummarizeDocument', 'OnLoadImage',
+#         'GetTabLabel', 'GetGroupLabel', 'GetRunPromptLabel', 'GetAnalyzeDocLabel',
+#         'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel',
+#         'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter'
+#     ]
+#     _public_attrs_ = ['ribbon']
+
+#     def __init__(self):
+#         log_message("--- Add-in __init__ started ---")
+#         try:
+#             ribbon_path = resource_path('ribbon.xml')
+#             log_message(f"Attempting to load ribbon from: {ribbon_path}")
+#             with open(ribbon_path, 'r', encoding='utf-8') as f:
+#                 self.ribbon = f.read()
+#             log_message("Ribbon XML loaded successfully.")
+
+#             self.translations = {
+#                 1033: {
+#                     "tab": "AI Assistant", "group": "AI Tools", "run_prompt": "Run General Prompt",
+#                     "analyze_doc": "Analyze Document", "summarize_doc": "Summarize Document",
+#                     "create_memo": "Create Memo", "create_minutes": "Create Minutes", "create_cover_letter": "Create Cover Letter",
+#                     "prompt_title": "AI Assistant", "prompt_message": "Enter your request (e.g., 'write a report on X'):",
+#                     "memo_topic": "Enter the memo topic:", "memo_audience": "Enter the memo's audience:",
+#                     "minutes_topic": "Enter the meeting topic:", "minutes_attendees": "Enter attendees (comma-separated):",
+#                     "minutes_info": "Enter key discussion points:",
+#                     "cover_letter_topic": "Enter the job position:", "cover_letter_audience": "Enter the hiring manager/company:",
+#                     "action_cancelled": "Action cancelled.", "contacting_server": "AI Assistant: Contacting server, please wait...",
+#                     "connection_error": "\n\nERROR: Could not connect to the backend server. Please ensure the AI Backend is running.\n\n",
+#                     "unexpected_error": "\n\nAn unexpected error occurred: {e}\n\n",
+#                     "result_header": "\n\n--- AI Assistant Result ---\n", "result_footer": "\n--- End of Result ---\n\n",
+#                     "no_active_doc": "No active document found."
+#                 }
+#             }
+#             log_message("--- Add-in __init__ completed successfully. ---")
+#         except FileNotFoundError:
+#             log_message(f"FATAL ERROR: Ribbon XML file not found at {ribbon_path}")
+#             self.ribbon = ""
+#         except Exception as e:
+#             log_message(f"FATAL ERROR IN __init__: {e}\n{traceback.format_exc()}")
+#             self.ribbon = ""
+
+#     def _get_localized_string(self, key):
+#         lang_id = 1033
+#         wps_app = get_wps_application()
+#         if wps_app:
+#             try:
+#                 lang_id = wps_app.LanguageSettings.LanguageID(1)
+#             except Exception:
+#                 pass
+#         return self.translations.get(lang_id, self.translations[1033]).get(key, key)
+
+#     def GetTabLabel(self, c): return self._get_localized_string("tab")
+#     def GetGroupLabel(self, c): return self._get_localized_string("group")
+#     def GetRunPromptLabel(self, c): return self._get_localized_string("run_prompt")
+#     def GetAnalyzeDocLabel(self, c): return self._get_localized_string("analyze_doc")
+#     def GetSummarizeDocLabel(self, c): return self._get_localized_string("summarize_doc")
+#     def GetCreateMemoLabel(self, c): return self._get_localized_string("create_memo")
+#     def GetCreateMinutesLabel(self, c): return self._get_localized_string("create_minutes")
+#     def GetCreateCoverLetterLabel(self, c): return self._get_localized_string("create_cover_letter")
+
+#     def OnLoadImage(self, imageName):
+#         image_path = resource_path(f"{imageName}.png")
+#         log_message(f"Attempting to load image: {image_path}")
+#         try:
+#             img_handle = win32api.LoadImage(0, image_path, 0, 32, 32, 0x10)
+#             log_message(f"Successfully loaded image '{imageName}'.")
+#             return img_handle
+#         except Exception as e:
+#             log_message(f"ERROR: Failed to load image '{imageName}': {e}")
+#             return None
+
+#     def _call_backend_task(self, endpoint: str, payload: dict):
+#         log_message(f"Calling backend endpoint: {endpoint}")
+#         try:
+#             insert_text_at_cursor(self._get_localized_string("contacting_server"))
+#             response = requests.post(f"{BACKEND_URL}{endpoint}", json=payload, timeout=300)
+#             response.raise_for_status()
+#             result = response.json().get("result", "")
+#             header = self._get_localized_string("result_header")
+#             footer = self._get_localized_string("result_footer")
+#             insert_text_at_cursor(f"{header}{result}{footer}")
+#             log_message(f"Successfully received response from {endpoint}.")
+#         except requests.exceptions.ConnectionError:
+#             log_message(f"Connection error to {endpoint}")
+#             insert_text_at_cursor(self._get_localized_string("connection_error"))
+#         except Exception as e:
+#             log_message(f"Error calling {endpoint}: {e}")
+#             insert_text_at_cursor(self._get_localized_string("unexpected_error").format(e=e))
+
+#     def OnRunPrompt(self, c):
+#         root = Tk(); root.withdraw()
+#         prompt = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                       self._get_localized_string("prompt_message"))
+#         root.destroy()
+#         if not prompt: 
+#             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
+#         threading.Thread(target=self._call_backend_task, 
+#                         args=("/process", {"prompt": prompt})).start()
+
+#     def OnAnalyzeDocument(self, c):
+#         wps_app = get_wps_application()
+#         if not wps_app or wps_app.Documents.Count == 0: 
+#             return insert_text_at_cursor(self._get_localized_string("no_active_doc"))
+#         content = wps_app.ActiveDocument.Content.Text
+#         threading.Thread(target=self._call_backend_task, 
+#                         args=("/analyze", {"content": content, "prompt": "Analyze the document content."})).start()
+
+#     def OnSummarizeDocument(self, c):
+#         wps_app = get_wps_application()
+#         if not wps_app or wps_app.Documents.Count == 0: 
+#             return insert_text_at_cursor(self._get_localized_string("no_active_doc"))
+#         content = wps_app.ActiveDocument.Content.Text
+#         threading.Thread(target=self._call_backend_task, 
+#                         args=("/summarize", {"content": content, "prompt": "Summarize the document content."})).start()
+
+#     def OnCreateMemo(self, c):
+#         root = Tk(); root.withdraw()
+#         topic = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                      self._get_localized_string("memo_topic"))
+#         if not topic:
+#             root.destroy()
+#             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
+#         audience = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                         self._get_localized_string("memo_audience"))
+#         root.destroy()
+#         payload = {"doc_type": "memo", "topic": topic, "audience": audience or "Internal Team"}
+#         threading.Thread(target=self._call_backend_task, args=("/create_memo", payload)).start()
+
+#     def OnCreateMinutes(self, c):
+#         root = Tk(); root.withdraw()
+#         topic = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                      self._get_localized_string("minutes_topic"))
+#         if not topic:
+#             root.destroy()
+#             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
+#         attendees = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                          self._get_localized_string("minutes_attendees"))
+#         info = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                     self._get_localized_string("minutes_info"))
+#         root.destroy()
+#         payload = {
+#             "doc_type": "minutes", "topic": topic, "audience": "Meeting Attendees",
+#             "members_present": [name.strip() for name in (attendees or "").split(',') if name.strip()],
+#             "data_sources": [data.strip() for data in (info or "").split(',') if data.strip()]
+#         }
+#         threading.Thread(target=self._call_backend_task, args=("/create_minutes", payload)).start()
+
+#     def OnCreateCoverLetter(self, c):
+#         root = Tk(); root.withdraw()
+#         topic = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                      self._get_localized_string("cover_letter_topic"))
+#         if not topic:
+#             root.destroy()
+#             return insert_text_at_cursor(self._get_localized_string("action_cancelled"))
+#         audience = simpledialog.askstring(self._get_localized_string("prompt_title"), 
+#                                         self._get_localized_string("cover_letter_audience"))
+#         root.destroy()
+#         payload = {"doc_type": "cover_letter", "topic": topic, "audience": audience or "Hiring Manager"}
+#         threading.Thread(target=self._call_backend_task, args=("/create_cover_letter", payload)).start()
+
 
 # if __name__ == '__main__':
-#     # This block performs a fully manual registration to avoid pywin32 bugs.
-    
 #     def manual_register_server(cls):
-#         """Manually creates all necessary registry keys for the COM server and WPS."""
+#         """FIXED: Enhanced registration with proper InprocServer32 handling"""
 #         import winreg
 #         import pythoncom
 
@@ -381,49 +695,68 @@ class WPSAddin:
 
 #         log_message(f"Starting manual registration for {'64-bit' if is_64bit_process else '32-bit'} view.")
 
+#         # Register core COM Server
 #         try:
-#             # Step 1: Create the main CLSID key
+#             # Main CLSID key
 #             with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", 0, winreg.KEY_WRITE | reg_view_flag) as key:
 #                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
-#                 log_message(f"Created CLSID key with description.")
-
-#                 # Step 2: Create the ProgID subkey
-#                 with winreg.CreateKeyEx(key, "ProgID", 0, winreg.KEY_WRITE) as progid_key:
-#                     winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
-#                     log_message(f"Created ProgID subkey.")
-
-#                 # Step 3: Create the InprocServer32 subkey with the CORRECT DLL path
-#                 with winreg.CreateKeyEx(key, "InprocServer32", 0, winreg.KEY_WRITE) as inproc_key:
-#                     pythoncom_path = pythoncom.__file__
-#                     winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, pythoncom_path)
-#                     log_message(f"Created InprocServer32 subkey pointing to: {pythoncom_path}")
-
-#             # Step 4: Create the ProgID-to-CLSID mapping
+            
+#             # ProgID subkey
+#             with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", 0, winreg.KEY_WRITE | reg_view_flag) as progid_key:
+#                 winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
+            
+#             # FIXED: InprocServer32 with proper threading model
+#             with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", 0, winreg.KEY_WRITE | reg_view_flag) as inproc_key:
+#                 # For PyInstaller, use the executable path instead of pythoncom
+#                 executable_path = sys.executable
+#                 winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, executable_path)
+#                 winreg.SetValueEx(inproc_key, "ThreadingModel", 0, winreg.REG_SZ, "Apartment")  # FIXED: Added threading model
+            
+#             # ProgID-to-CLSID mapping
 #             with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, progid, 0, winreg.KEY_WRITE | reg_view_flag) as key:
 #                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
 #                 with winreg.CreateKeyEx(key, "CLSID", 0, winreg.KEY_WRITE) as clsid_key:
 #                     winreg.SetValueEx(clsid_key, "", 0, winreg.REG_SZ, clsid)
-#                     log_message(f"Created ProgID-to-CLSID mapping.")
             
-#             # Step 5: Create the specific entry for WPS Office
-#             wps_addin_path = f"Software\\Kingsoft\\Office\\Addins\\{progid}"
-#             with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addin_path, 0, winreg.KEY_WRITE) as key:
-#                 winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
-#                 winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
-#                 winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) 
-#                 log_message(f"Created specific WPS Add-in entry at HKCU\\{wps_addin_path}")
-
-#             print("Manual registration successful.")
-#             log_message("Manual registration successful.")
-
+#             log_message("Core COM server registration completed successfully.")
 #         except Exception as e:
-#             print(f"Manual registration failed: {e}")
-#             log_message(f"Manual registration failed:\n{traceback.format_exc()}")
-#             input("Press Enter to continue...")
+#             log_message(f"FATAL: Failed to register core COM server: {e}")
+#             print("FATAL: Failed to register the core COM server. Please run as Administrator.")
+#             return
 
+#         # Register WPS Office add-in entry
+#         wps_addin_paths = [
+#             f"Software\\Kingsoft\\Office\\Addins\\{progid}",
+#             f"Software\\WPS\\Office\\Addins\\{progid}",
+#             f"Software\\WPS Office\\Addins\\{progid}"
+#         ]
+        
+#         registration_succeeded = False
+#         for path in wps_addin_paths:
+#             try:
+#                 with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE) as key:
+#                     winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
+#                     winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+#                     winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3)
+#                     winreg.SetValueEx(key, "CLSID", 0, winreg.REG_SZ, clsid)
+#                     # FIXED: Added CommandLineSafe
+#                     winreg.SetValueEx(key, "CommandLineSafe", 0, winreg.REG_DWORD, 0)
+                
+#                 log_message(f"SUCCESS: WPS add-in registered at HKCU\\{path}")
+#                 print(f"SUCCESS: Add-in registered at: HKCU\\{path}")
+#                 registration_succeeded = True
+#                 break
+#             except Exception as e:
+#                 log_message(f"Could not register at {path}: {e}")
+
+#         if registration_succeeded:
+#             print("\nRegistration completed successfully!")
+#             print("Please restart WPS Office to see the add-in.")
+#         else:
+#             print("\nFAILED: Could not register WPS Office add-in entry.")
 
 #     def manual_unregister_server(cls):
-#         """Manually removes all registry keys."""
+#         """Enhanced unregistration"""
 #         import winreg
 
 #         clsid = cls._reg_clsid_
@@ -431,155 +764,47 @@ class WPSAddin:
 
 #         is_64bit_process = sys.maxsize > 2**32
 #         reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
+
+#         # Remove WPS Office entries
+#         wps_addin_paths = [
+#             f"Software\\Kingsoft\\Office\\Addins\\{progid}",
+#             f"Software\\WPS\\Office\\Addins\\{progid}",
+#             f"Software\\WPS Office\\Addins\\{progid}"
+#         ]
         
-#         log_message(f"Starting manual unregistration for {'64-bit' if is_64bit_process else '32-bit'} view.")
+#         for path in wps_addin_paths:
+#             try:
+#                 winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, path, 0, 0)
+#                 log_message(f"Removed: HKCU\\{path}")
+#             except FileNotFoundError:
+#                 pass
+#             except Exception as e:
+#                 log_message(f"Could not remove {path}: {e}")
 
-#         try:
-#             # Delete keys in reverse order of creation
-#             winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, f"Software\\Kingsoft\\Office\\Addins\\{progid}", 0, 0)
-#             log_message("Deleted WPS Add-in entry.")
-#         except FileNotFoundError: pass
-#         except Exception as e: log_message(f"Could not delete WPS Add-in key: {e}")
-
+#         # Remove COM server entries
 #         try:
 #             winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"{progid}\\CLSID", reg_view_flag, 0)
 #             winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, progid, reg_view_flag, 0)
-#             log_message("Deleted ProgID mapping.")
-#         except FileNotFoundError: pass
-#         except Exception as e: log_message(f"Could not delete ProgID key: {e}")
-
-#         try:
-#             # Recursively delete the CLSID key and all its subkeys
 #             winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", reg_view_flag, 0)
 #             winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", reg_view_flag, 0)
 #             winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", reg_view_flag, 0)
-#             log_message("Deleted CLSID key.")
-#         except FileNotFoundError: pass
-#         except Exception as e: log_message(f"Could not delete CLSID key: {e}")
+#             log_message("Removed COM server entries.")
+#         except FileNotFoundError:
+#             pass
+#         except Exception as e:
+#             log_message(f"Could not remove COM entries: {e}")
 
-#         print("Manual unregistration complete.")
-#         log_message("Manual unregistration complete.")
+#         print("Unregistration complete.")
 
-
-#     # Main Command Logic 
+#     # Main command logic
 #     if len(sys.argv) > 1:
 #         if sys.argv[1].lower() == '/regserver':
 #             manual_register_server(WPSAddin)
 #         elif sys.argv[1].lower() == '/unregserver':
 #             manual_unregister_server(WPSAddin)
 #     else:
-#         print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
-#         input("Press Enter to exit.")
-
-
-
-
-
-# --- FINAL, MANUAL COM Server REGISTRATION LOGIC TO AVOID PYWIN32 BUGS ---
-
-if __name__ == '__main__':
-    # This block performs a fully manual registration to avoid pywin32 bugs.
-    
-    def manual_register_server(cls):
-        """Manually creates all necessary registry keys for the COM server and WPS."""
-        import winreg
-        import pythoncom
-
-        clsid = cls._reg_clsid_
-        progid = cls._reg_progid_
-        desc = cls._reg_desc_
-
-        is_64bit_process = sys.maxsize > 2**32
-        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
-
-        log_message(f"Starting manual registration for {'64-bit' if is_64bit_process else '32-bit'} view.")
-
-        try:
-            # Step 1: Create the main CLSID key
-            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", 0, winreg.KEY_WRITE | reg_view_flag) as key:
-                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
-                log_message(f"Created CLSID key with description.")
-
-                # Step 2: Create the ProgID subkey
-                with winreg.CreateKeyEx(key, "ProgID", 0, winreg.KEY_WRITE) as progid_key:
-                    winreg.SetValueEx(progid_key, "", 0, winreg.REG_SZ, progid)
-                    log_message(f"Created ProgID subkey.")
-
-                # Step 3: Create the InprocServer32 subkey with the CORRECT DLL path
-                with winreg.CreateKeyEx(key, "InprocServer32", 0, winreg.KEY_WRITE) as inproc_key:
-                    pythoncom_path = pythoncom.__file__
-                    winreg.SetValueEx(inproc_key, "", 0, winreg.REG_SZ, pythoncom_path)
-                    log_message(f"Created InprocServer32 subkey pointing to: {pythoncom_path}")
-
-            # Step 4: Create the ProgID-to-CLSID mapping
-            with winreg.CreateKeyEx(winreg.HKEY_CLASSES_ROOT, progid, 0, winreg.KEY_WRITE | reg_view_flag) as key:
-                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, desc)
-                with winreg.CreateKeyEx(key, "CLSID", 0, winreg.KEY_WRITE) as clsid_key:
-                    winreg.SetValueEx(clsid_key, "", 0, winreg.REG_SZ, clsid)
-                    log_message(f"Created ProgID-to-CLSID mapping.")
-            
-            # Step 5: Create the specific entry for WPS Office
-            wps_addin_path = f"Software\\Kingsoft\\Office\\Addins\\{progid}"
-            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addin_path, 0, winreg.KEY_WRITE) as key:
-                winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, desc)
-                winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
-                winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3) 
-                log_message(f"Created specific WPS Add-in entry at HKCU\\{wps_addin_path}")
-
-            print("Manual registration successful.")
-            log_message("Manual registration successful.")
-
-        except Exception as e:
-            print(f"Manual registration failed: {e}")
-            log_message(f"Manual registration failed:\n{traceback.format_exc()}")
-            input("Press Enter to continue...")
-
-
-    def manual_unregister_server(cls):
-        """Manually removes all registry keys."""
-        import winreg
-
-        clsid = cls._reg_clsid_
-        progid = cls._reg_progid_
-
-        is_64bit_process = sys.maxsize > 2**32
-        reg_view_flag = winreg.KEY_WOW64_64KEY if is_64bit_process else winreg.KEY_WOW64_32KEY
-        
-        log_message(f"Starting manual unregistration for {'64-bit' if is_64bit_process else '32-bit'} view.")
-
-        try:
-            # Delete keys in reverse order of creation
-            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, f"Software\\Kingsoft\\Office\\Addins\\{progid}", 0, 0)
-            log_message("Deleted WPS Add-in entry.")
-        except FileNotFoundError: pass
-        except Exception as e: log_message(f"Could not delete WPS Add-in key: {e}")
-
-        try:
-            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"{progid}\\CLSID", reg_view_flag, 0)
-            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, progid, reg_view_flag, 0)
-            log_message("Deleted ProgID mapping.")
-        except FileNotFoundError: pass
-        except Exception as e: log_message(f"Could not delete ProgID key: {e}")
-
-        try:
-            # Recursively delete the CLSID key and all its subkeys
-            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\InprocServer32", reg_view_flag, 0)
-            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}\\ProgID", reg_view_flag, 0)
-            winreg.DeleteKeyEx(winreg.HKEY_CLASSES_ROOT, f"CLSID\\{clsid}", reg_view_flag, 0)
-            log_message("Deleted CLSID key.")
-        except FileNotFoundError: pass
-        except Exception as e: log_message(f"Could not delete CLSID key: {e}")
-
-        print("Manual unregistration complete.")
-        log_message("Manual unregistration complete.")
-
-
-    # Main Command Logic 
-    if len(sys.argv) > 1:
-        if sys.argv[1].lower() == '/regserver':
-            manual_register_server(WPSAddin)
-        elif sys.argv[1].lower() == '/unregserver':
-            manual_unregister_server(WPSAddin)
-    else:
-        print("This is a COM server client for an add-in. Use '/regserver' or '/unregserver'.")
-        input("Press Enter to exit.")
+#         print("WPS Office AI Assistant Add-in")
+#         print("Usage:")
+#         print("  /regserver   - Register the add-in")
+#         print("  /unregserver - Unregister the add-in")
+#         input("\nPress Enter to exit...")

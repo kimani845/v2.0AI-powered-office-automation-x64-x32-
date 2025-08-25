@@ -220,6 +220,29 @@ class WPSAddin:
 
 
 if __name__ == '__main__':
+    
+    def register_wps_addin_entry(clsid, progid, description):
+        """
+        Manually creates the specific registry entry that WPS Office looks for.
+        """
+        # ... (The full function code from Part 1 goes here) ...
+        import winreg
+        log_message(f"Attempting to create WPS-specific entry for ProgID: {progid}")
+        wps_addins_path = r"Software\Kingsoft\Office\Addins"
+        try:
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, wps_addins_path, 0, winreg.KEY_CREATE_SUB_KEY) as parent_key:
+                log_message(f"Successfully opened/created parent key at HKCU\\{wps_addins_path}")
+                with winreg.CreateKeyEx(parent_key, progid) as key:
+                    winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, description)
+                    winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+                    winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3)
+                    log_message(f"Successfully created and set values for WPS Add-in entry '{progid}'.")
+            return True
+        except Exception as e:
+            print(f"FATAL: An unexpected error occurred during WPS-specific registration: {e}")
+            log_message(f"FATAL: Unexpected error during WPS registration:\n{traceback.format_exc()}")
+            return False
+    
     def manual_register_server(cls):
         """FIXED: Enhanced registration with proper InprocServer32 handling"""
         import winreg

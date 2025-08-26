@@ -10,3 +10,6 @@ venv64
 *%USERPROFILE%/
 *dist/
 *build/
+*Output/
+VC_redist.x64.exe
+VC_redist.x86.exe

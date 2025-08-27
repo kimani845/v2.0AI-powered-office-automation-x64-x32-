@@ -105,18 +105,22 @@ class WPSAddin:
 
     def __init__(self):
         log_message("--- WPSAdd-in __init__ started ---")
+        logging.getLogger().handlers[0].flush()
         
         try:
             ribbon_path = resource_path('ribbon.xml')
             log_message(f"Attempting to load ribbon from: {ribbon_path}")
+            logging.getLogger().handlers[0].flush()
             
             if not os.path.exists(ribbon_path):
                 log_message(f"FATAL: Ribbon XML file does NOT exist at the path.")
                 raise FileNotFoundError(f"Ribbon XML not found at {ribbon_path}")
+            logging.getLogger().handlers[0].flush()
             
             with open(ribbon_path, 'r', encoding='utf-8') as f:
                 self.ribbon = f.read()
             log_message("Ribbon XML loaded successfully.")
+            logging.getLogger().handlers[0].flush()
 
             self.translations = {
                 1033: {
@@ -137,6 +141,7 @@ class WPSAddin:
             }
             
             log_message("--- Add-in __init__ completed successfully. ---")
+            logging.getLogger().handlers[0].flush()
         except FileNotFoundError:
             log_message(f"FATAL ERROR: Ribbon XML file not found at {ribbon_path}")
             self.ribbon = ""

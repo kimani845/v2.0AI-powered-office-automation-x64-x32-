@@ -59,9 +59,9 @@ BACKEND_URL = "http://127.0.0.1:8000"
 # Consistent naming
 WPS_ADDIN_ENTRY_NAME = "WPSAIAddin.Connect"
 
-def log_message(message):
-    """Writes a message with a timestamp to the terminal (stdout)."""
-    print(f"[{datetime.datetime.now()}] {message}")
+# def log_message(message):
+#     """Writes a message with a timestamp to the terminal (stdout)."""
+#     print(f"[{datetime.datetime.now()}] {message}")
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller bundling """

@@ -21,7 +21,6 @@ try:
     # os.makedirs(log_dir, exist_ok=True)
     # log_file = os.path.join(log_dir, 'addin_debug.log')
     
-    import os
     # Base directory (adjust path if needed)
     base_dir = os.path.dirname(os.path.abspath(__file__)) # Logs directory inside project
     log_dir = os.path.join(base_dir, "logs")

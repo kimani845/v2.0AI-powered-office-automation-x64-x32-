@@ -13,3 +13,4 @@ venv64
 *Output/
 VC_redist.x64.exe
 VC_redist.x86.exe
+*logs/

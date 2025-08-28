@@ -1,6 +1,7 @@
 """
 This script runs as a COM server client to provide an AI Assistant add-in for WPS Office.
 Fixed version addressing common WPS Office add-in loading issues and PyInstaller compatibility.
+This is different from addin_client because it automatically handles pyinstaller and python scripts all together
 """
 import datetime
 import traceback
@@ -102,6 +103,8 @@ class WPSAddin:
         'GetTabLabel', 'GetGroupLabel', 'GetRunPromptLabel', 'GetAnalyzeDocLabel',
         'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel',
         'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter'
+        'GetCustomUI' # This is the method that WPS Office expects to load the XML
+
     ]
     _public_attrs_ = ['ribbon']
 
@@ -143,6 +146,48 @@ class WPSAddin:
         except Exception as e:
             log_message(f"FATAL ERROR IN __init__: {e}\n{traceback.format_exc()}")
             self.ribbon = ""
+            
+    
+    # Explicit Ribbon Loader for WPS
+    def GetCustomUI(self, ribbon_id):
+        """
+        WPS will call this to request the ribbon XML.
+        This is the critical method for WPS Office integration.
+        """
+        log_message(f"=== WPS GETCUSTOMUI METHOD CALLED ===")
+        log_message(f"Ribbon ID requested by WPS: {ribbon_id}")
+        log_message(f"This method is CRITICAL for WPS Office add-in loading")
+        
+        try:
+            # Check if we have cached ribbon content
+            if hasattr(self, 'ribbon') and self.ribbon:
+                log_message(f"✓ Returning cached ribbon XML (length: {len(self.ribbon)} chars)")
+                log_message("✓ WPS GetCustomUI call SUCCESSFUL")
+                return self.ribbon
+            else:
+                log_message("✗ No cached ribbon content, attempting to reload from file", "warning")
+                
+            # Fallback: reload from file
+            ribbon_path = resource_path('ribbon.xml')
+            log_message(f"Reloading ribbon XML from: {ribbon_path}")
+            
+            if not log_xml_loading_attempt(ribbon_path):
+                log_message("✗ CRITICAL: Ribbon XML reload failed in GetCustomUI", "critical")
+                return None
+                
+            with open(ribbon_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            log_message(f"✓ Successfully reloaded ribbon XML (length: {len(content)} chars)")
+            log_message("✓ WPS GetCustomUI call SUCCESSFUL (reloaded)")
+            return content
+            
+        except Exception as e:
+            log_message(f"✗ CRITICAL FAILURE in GetCustomUI: {e}", "critical")
+            log_message("✗ This will prevent the WPS add-in from loading properly!")
+            log_message(f"Full traceback: {traceback.format_exc()}", "debug")
+            return None
+        
 
     def _get_localized_string(self, key):
         lang_id = 1033
@@ -478,3 +523,5 @@ if __name__ == '__main__':
         print("  /unregserver - Unregister the add-in")
         print(f"Running as: {'PyInstaller bundle' if is_pyinstaller_bundle() else 'Python script'}")
         input("\nPress Enter to exit...")
+
+

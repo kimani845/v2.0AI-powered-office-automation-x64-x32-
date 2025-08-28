@@ -1,4 +1,6 @@
-<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" loadImage="OnLoadImage">
+<!-- <customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" loadImage="OnLoadImage"> This is used by microsoft -->
+
+<customUI xmlns="http://schemas.kingsoft.com/office/2009/07/customui" loadImage="OnLoadImage">
     <ribbon>
         <tabs>
             <tab id="ai_assistant_tab" getLabel="GetTabLabel">

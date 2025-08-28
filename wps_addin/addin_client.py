@@ -93,13 +93,17 @@ class WPSAddin:
     _reg_clsid_ = "{cf0b4f12-56e5-4818-b400-b3f2660e0a3c}" # python -c "import uuid; print(uuid.uuid4())"
     _reg_desc_ = "AI Office Automation"
     _reg_progid_ = WPS_ADDIN_ENTRY_NAME  
-    _reg_class_spec_ = __name__ + ".WPSAddin"
+    # _reg_class_spec_ = __name__ + ".WPSAddin"
+    _reg_class_spec_ = "wps_addin.WPSAddin"
+
 
     _public_methods_ = [
         'OnRunPrompt', 'OnAnalyzeDocument', 'OnSummarizeDocument', 'OnLoadImage',
         'GetTabLabel', 'GetGroupLabel', 'GetRunPromptLabel', 'GetAnalyzeDocLabel',
         'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel',
-        'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter'
+        'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter',
+        'GetCustomUI' # This is the method that WPS Office expects to load the XML
+
     ]
     _public_attrs_ = ['ribbon']
 
@@ -366,20 +370,51 @@ if __name__ == '__main__':
         print("Unregistration complete.")
 
 
-    def run_com_server():
-        log_message("Preparing to start COM server...")
+    # def run_com_server():
+    #     log_message("Preparing to start COM server...")
+    #     try:
+    #         # This is where add-in gets created when WPS connects
+    #         pythoncom.CoInitialize()
+    #         factory = pythoncom.MakePyFactory(WPSAddin)
+    #         clsid = WPSAddin._reg_clsid_
+    #         pythoncom.CoRegisterClassObject(clsid, factory, pythoncom.CLSCTX_LOCAL_SERVER, pythoncom.REGCLS_MULTIPLEUSE)
+    #         log_message("COM Class Object registered. Starting message pump.")
+    #         pythoncom.PumpMessages()
+    #         pythoncom.CoUninitialize()
+    #         log_message("COM server shut down gracefully.")
+    #     except Exception as e:
+    #         log_message(f"FATAL ERROR while running COM server: {traceback.format_exc()}")
+    
+    
+def run_com_server():
+    """Run the COM server with proper factory creation."""
+    log_message("Preparing to start COM server...", "INFO")
+    try:
+        pythoncom.CoInitialize()
+        log_message("COM initialized successfully.", "INFO")
+
+        from win32com.server import localserver
+
+        log_message(f"Starting local COM server for class: {WPSAddin.__name__}", "INFO")
+        print("COM Server is running. Press Ctrl+C to stop.")
+
+        # This runs the COM message pump until stopped
+        localserver.serve([WPSAddin])
+
+    except KeyboardInterrupt:
+        log_message("COM server stopped by user.", "INFO")
+        print("\nCOM Server stopped.")
+    except Exception as e:
+        log_message(f"FATAL ERROR while running COM server: {e}\n{traceback.format_exc()}", "ERROR")
+        print(f"FATAL ERROR: {e}")
+        log_message(f"WPSAddin._reg_clsid_ = {WPSAddin._reg_clsid_}", "DEBUG")
+        log_message(f"Type of _reg_clsid_: {type(WPSAddin._reg_clsid_)}", "DEBUG")
+    finally:
         try:
-            # This is where add-in gets created when WPS connects
-            pythoncom.CoInitialize()
-            factory = pythoncom.MakePyFactory(WPSAddin)
-            clsid = WPSAddin._reg_clsid_
-            pythoncom.CoRegisterClassObject(clsid, factory, pythoncom.CLSCTX_LOCAL_SERVER, pythoncom.REGCLS_MULTIPLEUSE)
-            log_message("COM Class Object registered. Starting message pump.")
-            pythoncom.PumpMessages()
             pythoncom.CoUninitialize()
-            log_message("COM server shut down gracefully.")
+            log_message("COM uninitialized successfully.", "INFO")
         except Exception as e:
-            log_message(f"FATAL ERROR while running COM server: {traceback.format_exc()}")
+            log_message(f"Error during CoUninitialize: {e}", "ERROR")
 
     # Main execution logic
     if len(sys.argv) > 1:

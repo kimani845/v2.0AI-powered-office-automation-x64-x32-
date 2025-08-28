@@ -332,7 +332,7 @@ if __name__ == '__main__':
         progid = cls._reg_progid_
         desc = cls._reg_desc_
         
-        # Get the executable path
+        # Get the pyinstaller .exe executable path
         exe_path = sys.executable 
         
         log_message(f"Registering PyInstaller COM server with executable: {exe_path}")

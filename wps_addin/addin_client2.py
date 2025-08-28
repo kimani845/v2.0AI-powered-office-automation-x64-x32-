@@ -96,13 +96,15 @@ class WPSAddin:
     _reg_clsid_ = "{cf0b4f12-56e5-4818-b400-b3f2660e0a3c}" # python -c "import uuid; print(uuid.uuid4())"
     _reg_desc_ = "AI Office Automation"
     _reg_progid_ = WPS_ADDIN_ENTRY_NAME  
-    _reg_class_spec_ = __name__ + ".WPSAddin"
+    # _reg_class_spec_ = __name__ + ".WPSAddin"
+    _reg_class_spec_ = "wps_addin.WPSAddin"
+
 
     _public_methods_ = [
         'OnRunPrompt', 'OnAnalyzeDocument', 'OnSummarizeDocument', 'OnLoadImage',
         'GetTabLabel', 'GetGroupLabel', 'GetRunPromptLabel', 'GetAnalyzeDocLabel',
         'GetSummarizeDocLabel', 'GetCreateMemoLabel', 'GetCreateMinutesLabel',
-        'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter'
+        'GetCreateCoverLetterLabel', 'OnCreateMemo', 'OnCreateMinutes', 'OnCreateCoverLetter',
         'GetCustomUI' # This is the method that WPS Office expects to load the XML
 
     ]
@@ -171,12 +173,16 @@ class WPSAddin:
             ribbon_path = resource_path('ribbon.xml')
             log_message(f"Reloading ribbon XML from: {ribbon_path}")
             
-            if not log_xml_loading_attempt(ribbon_path):
-                log_message("✗ CRITICAL: Ribbon XML reload failed in GetCustomUI", "critical")
-                return None
+            # if not log_xml_loading_attempt(ribbon_path):
+            #     log_message("✗ CRITICAL: Ribbon XML reload failed in GetCustomUI", "critical")
+            #     return None
                 
             with open(ribbon_path, 'r', encoding='utf-8') as f:
                 content = f.read()
+            
+            self.ribbon = content
+            log_message(f"✓ Successfully reloaded ribbon XML (length: {len(content)} chars)")
+            return content
                 
             log_message(f"✓ Successfully reloaded ribbon XML (length: {len(content)} chars)")
             log_message("✓ WPS GetCustomUI call SUCCESSFUL (reloaded)")

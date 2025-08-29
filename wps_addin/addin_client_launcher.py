@@ -6,7 +6,7 @@ This file serves as the entry point and determines whether to use 32-bit or 64-b
 import sys
 import platform
 import os
-from wps_addin.addin_base_client import log_message
+from addin_base_client import log_message
 
 def detect_architecture():
     """Detect if we're running on 32-bit or 64-bit system"""
@@ -33,7 +33,7 @@ def main():
     
     if is_64bit:
         log_message("Detected 64-bit environment - using 64-bit implementation")
-        from wps_addin.addin_client64bit import (
+        from addin_client64bit import (
             WPSAddin64 as WPSAddin, 
             register_server_64bit as register_server,
             unregister_server_64bit as unregister_server,
@@ -42,7 +42,7 @@ def main():
         )
     else:
         log_message("Detected 32-bit environment - using 32-bit implementation")
-        from wps_addin.addin_client_32bit import (
+        from addin_client_32bit import (
             WPSAddin32 as WPSAddin,
             register_server_32bit as register_server,
             unregister_server_32bit as unregister_server,

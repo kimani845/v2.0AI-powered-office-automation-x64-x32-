@@ -1,3 +1,4 @@
+# DONE AND RUNNING
 """
 64-bit specific WPS Add-in implementation.
 Handles COM server registration and execution for 64-bit WPS Office installations.
@@ -112,7 +113,7 @@ def register_server_64bit(cls):
         return False
         
     # Step 2: Register WPS Office add-in entries
-    from wps_addin.addin_client_registry_utils import register_wps_addin_entry
+    from addin_client_registry_utils import register_wps_addin_entry
     
     clsid = cls._reg_clsid_
     progid = cls._reg_progid_
@@ -138,7 +139,7 @@ def unregister_server_64bit(cls):
         except Exception as e:
             log_message(f"Could not unregister 64-bit Python COM server: {e}")
 
-    from wps_addin.addin_client_registry_utils import unregister_wps_addin_entry
+    from addin_client_registry_utils import unregister_wps_addin_entry
     unregister_wps_addin_entry(cls._reg_clsid_, cls._reg_progid_)
     print("64-bit unregistration complete.")
 

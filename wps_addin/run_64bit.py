@@ -1,3 +1,4 @@
+# DONE AND RUNNING
 """
 Entry point for 64-bit WPS Add-in
 Run this script with 64-bit Python to register/use the 64-bit version
@@ -5,14 +6,14 @@ Run this script with 64-bit Python to register/use the 64-bit version
 
 import sys
 import os
-from wps_addin_base import log_message
+from addin_base_client import log_message
 
 def main():
     """Main entry point for 64-bit operations"""
     log_message("64-bit WPS Add-in Entry Point")
     
     # Force import of 64-bit implementation
-    from wps_addin_64bit import (
+    from addin_client64bit import (
         WPSAddin64 as WPSAddin,
         register_server_64bit as register_server,
         unregister_server_64bit as unregister_server,

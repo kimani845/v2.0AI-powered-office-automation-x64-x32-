@@ -1,3 +1,4 @@
+# DONE AND RUNNING
 """
 32-bit specific WPS Add-in implementation.
 Handles COM server registration and execution for 32-bit WPS Office installations.
@@ -7,10 +8,9 @@ import sys
 import os
 import winreg
 import win32com.client
-import win32com.server.register
 import win32com.server.localserver
 import pythoncom
-from wps_addin.addin_base_client import WPSAddinBase, log_message
+from addin_base_client import WPSAddinBase, log_message
 
 class WPSAddin32(WPSAddinBase):
     """32-bit WPS Add-in implementation"""
@@ -33,6 +33,7 @@ def register_com_server_python_32bit(cls):
     
     try:
         # Register COM via pywin32 as usual
+        import win32com.server.register
         win32com.server.register.UseCommandLine(cls)
         
         # Overwrite to only keep InprocServer32
@@ -112,7 +113,7 @@ def register_server_32bit(cls):
         return False
         
     # Step 2: Register WPS Office add-in entries
-    from wps_addin.addin_client_registry_utils import register_wps_addin_entry
+    from addin_client_registry_utils import register_wps_addin_entry
     
     clsid = cls._reg_clsid_
     progid = cls._reg_progid_
@@ -133,12 +134,13 @@ def unregister_server_32bit(cls):
     # Unregister COM server
     if not is_pyinstaller_bundle():
         try:
+            import win32com.server.register
             win32com.server.register.UnregisterServer(cls._reg_clsid_)
             log_message("32-bit Python COM server unregistered successfully")
         except Exception as e:
             log_message(f"Could not unregister 32-bit Python COM server: {e}")
 
-    from wps_addin.addin_client_registry_utils import unregister_wps_addin_entry
+    from addin_client_registry_utils import unregister_wps_addin_entry
     unregister_wps_addin_entry(cls._reg_clsid_, cls._reg_progid_)
     print("32-bit unregistration complete.")
 
@@ -160,3 +162,5 @@ def check_environment_32bit():
     
     log_message(f"Running 32-bit as: {'PyInstaller bundle' if is_pyinstaller_bundle() else 'Python script'}")
     log_message(f"Executable: {sys.executable}")
+    
+    # DONE

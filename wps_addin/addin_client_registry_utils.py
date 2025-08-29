@@ -1,74 +1,79 @@
 """
-Main launcher that detects system architecture and launches appropriate add-in.
-This file serves as the entry point and determines whether to use 32-bit or 64-bit logic.
+Shared registry utilities for WPS Add-in registration.
+Contains common registry operations used by both 32-bit and 64-bit implementations.
 """
+# Completed
+import winreg
+from addin_base_client import log_message
 
-import sys
-import platform
-import os
-from wps_addin.addin_base_client import log_message
+def register_wps_addin_entry(clsid, progid, description):
+    """
+    Creates the specific registry entry that WPS Office looks for.
+    """
+    log_message(f"Attempting to create WPS-specific entry for ProgID: {progid}")
+    
+    # Try multiple possible WPS registry paths
+    wps_addin_paths = [
+        r"Software\Kingsoft\Office\Addins",
+        r"Software\WPS\Office\Addins",
+        r"Software\WPS Office\Addins"
+    ]
+    
+    registration_succeeded = False
+    
+    for base_path in wps_addin_paths:
+        try:
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, base_path, 0, winreg.KEY_CREATE_SUB_KEY) as parent_key:
+                log_message(f"Successfully opened/created parent key at HKCU\\{base_path}")
+                with winreg.CreateKeyEx(parent_key, progid) as key:
+                    winreg.SetValueEx(key, "Description", 0, winreg.REG_SZ, description)
+                    winreg.SetValueEx(key, "FriendlyName", 0, winreg.REG_SZ, "AI Assistant")
+                    winreg.SetValueEx(key, "LoadBehavior", 0, winreg.REG_DWORD, 3)
+                    winreg.SetValueEx(key, "CLSID", 0, winreg.REG_SZ, clsid)
+                    winreg.SetValueEx(key, "CommandLineSafe", 0, winreg.REG_DWORD, 0)
+                    log_message(f"Successfully created WPS Add-in entry '{progid}' at {base_path}")
+                    registration_succeeded = True
+                    break  # Success, no need to try other paths
+        except Exception as e:
+            log_message(f"Could not register at {base_path}: {e}")
+            continue
+    
+    return registration_succeeded
 
-def detect_architecture():
-    """Detect if we're running on 32-bit or 64-bit system"""
-    architecture = platform.architecture()[0]
-    machine = platform.machine()
+def unregister_wps_addin_entry(clsid, progid):
+    """Remove WPS Office and COM registry entries"""
     
-    log_message(f"System architecture: {architecture}")
-    log_message(f"Machine type: {machine}")
+    # Remove COM server entries
+    com_paths_to_remove = [
+        f"CLSID\\{clsid}\\LocalServer32",
+        f"CLSID\\{clsid}\\InprocServer32",
+        f"CLSID\\{clsid}\\ProgID",
+        f"CLSID\\{clsid}",
+        f"{progid}\\CLSID",
+        progid
+    ]
     
-    # Check if we're running 32-bit Python on 64-bit system
-    is_64bit_system = machine.endswith('64') or 'AMD64' in machine
-    is_64bit_python = sys.maxsize > 2**32
+    for path in com_paths_to_remove:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, path)
+            log_message(f"Removed COM entry: {path}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log_message(f"Could not remove COM entry {path}: {e}")
     
-    log_message(f"64-bit system: {is_64bit_system}")
-    log_message(f"64-bit Python: {is_64bit_python}")
+    # Remove WPS Office entries
+    wps_addin_paths = [
+        f"Software\\Kingsoft\\Office\\Addins\\{progid}",
+        f"Software\\WPS\\Office\\Addins\\{progid}",
+        f"Software\\WPS Office\\Addins\\{progid}"
+    ]
     
-    return is_64bit_python
-
-def main():
-    """Main entry point that routes to appropriate architecture-specific implementation"""
-    log_message("WPS Office AI Assistant Add-in Launcher")
-    
-    is_64bit = detect_architecture()
-    
-    if is_64bit:
-        log_message("Detected 64-bit environment - using 64-bit implementation")
-        from wps_addin.addin_client64bit import (
-            WPSAddin64 as WPSAddin, 
-            register_server_64bit as register_server,
-            unregister_server_64bit as unregister_server,
-            run_com_server_64bit as run_com_server,
-            check_environment_64bit as check_environment
-        )
-    else:
-        log_message("Detected 32-bit environment - using 32-bit implementation")
-        from wps_addin.addin_client_32bit import (
-            WPSAddin32 as WPSAddin,
-            register_server_32bit as register_server,
-            unregister_server_32bit as unregister_server,
-            run_com_server_32bit as run_com_server,
-            check_environment_32bit as check_environment
-        )
-    
-    # Main command logic
-    check_environment()
-    
-    if len(sys.argv) > 1:
-        if sys.argv[1].lower() == '/regserver':
-            register_server(WPSAddin)
-        elif sys.argv[1].lower() == '/unregserver':
-            unregister_server(WPSAddin)
-        elif sys.argv[1].lower() == '/embedding':
-            # This is called by Windows when WPS tries to instantiate the COM object
-            run_com_server()
-    else:
-        arch_type = "64-bit" if is_64bit else "32-bit"
-        print(f"WPS Office AI Assistant Add-in ({arch_type})")
-        print("Usage:")
-        print("  /regserver   - Register the add-in")
-        print("  /unregserver - Unregister the add-in")
-        print(f"Running as: {arch_type} {'PyInstaller bundle' if getattr(sys, 'frozen', False) else 'Python script'}")
-        input("\nPress Enter to exit...")
-
-if __name__ == '__main__':
-    main()
+    for path in wps_addin_paths:
+        try:
+            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, path, 0, 0)
+            log_message(f"Removed: HKCU\\{path}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log_message(f"Could not remove {path}: {e}")

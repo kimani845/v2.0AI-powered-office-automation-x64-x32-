@@ -1,3 +1,4 @@
+
 """
 This script is the backend server for the AI Office Automation add-in.
 It uses FastAPI to expose endpoints that perform heavy AI and data processing tasks.
@@ -5,10 +6,10 @@ This server is intended to be run as a standalone 64-bit executable.
 """
 import os
 import sys
+import tempfile
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import docx
-
 
 # This block makes the script "bundle-aware" and correctly loads the .env file.
 from dotenv import load_dotenv
@@ -25,17 +26,28 @@ if getattr(sys, 'frozen', False):
         # This is a critical error if the .env file is missing in the bundle.
         # You can add file logging here if you want to debug this on a client's machine.
         print("FATAL: Bundled .env file not found!")
+        # Create a log file in the same directory as the executable
+        log_file = os.path.join(application_path, 'error.log')
+        with open(log_file, 'w') as f:
+            f.write("FATAL: Bundled .env file not found!\n")
+            f.write(f"Looked for: {dotenv_path}\n")
+            f.write(f"Files in directory: {os.listdir(application_path)}\n")
 else:
     # We are running in a normal Python environment (development mode).
     # load_dotenv() will automatically find the .env in the project root.
     load_dotenv()
 
-# Path Setup
+# Path Setup - Improved for PyInstaller
 if getattr(sys, 'frozen', False):
+    # Running in a PyInstaller bundle
     base_path = sys._MEIPASS
+    application_path = os.path.dirname(sys.executable)
 else:
+    # Running in normal Python environment
     base_path = os.path.dirname(os.path.abspath(__file__))
+    application_path = base_path
 
+# Add base path to Python path
 sys.path.insert(0, base_path)
 
 # All Heavy Imports and Agent Initializations
@@ -46,7 +58,21 @@ try:
     from app.agents.articles import ArticleAgent
     from app.agents.documents import DocumentGenerationAgent, DocumentRequest # DocumentRequest is crucial
 except ImportError as e:
-    print(f"FATAL: Could not import agent modules. Ensure the 'app' folder is in the same directory. Error: {e}")
+    error_msg = f"FATAL: Could not import agent modules. Ensure the 'app' folder is in the same directory. Error: {e}"
+    print(error_msg)
+    
+    # Log the error for debugging
+    if getattr(sys, 'frozen', False):
+        log_file = os.path.join(application_path, 'import_error.log')
+        with open(log_file, 'w') as f:
+            f.write(error_msg + "\n")
+            f.write(f"Base path: {base_path}\n")
+            f.write(f"Application path: {application_path}\n")
+            f.write(f"Python path: {sys.path}\n")
+            if hasattr(sys, '_MEIPASS'):
+                f.write(f"PyInstaller temp path: {sys._MEIPASS}\n")
+                f.write(f"Files in temp path: {os.listdir(sys._MEIPASS)}\n")
+    
     sys.exit(1)
 
 print("Backend Server: Initializing AI agents...")
@@ -58,7 +84,15 @@ try:
     document_agent = DocumentGenerationAgent(llm_client)
     print("Backend Server: AI agents initialized successfully.")
 except Exception as e:
-    print(f"FATAL: Failed to initialize AI agents. Check API keys in config.json. Error: {e}")
+    error_msg = f"FATAL: Failed to initialize AI agents. Check API keys in config.json. Error: {e}"
+    print(error_msg)
+    
+    # Log the error for debugging
+    if getattr(sys, 'frozen', False):
+        log_file = os.path.join(application_path, 'agent_error.log')
+        with open(log_file, 'w') as f:
+            f.write(error_msg + "\n")
+    
     sys.exit(1)
 
 # Initialize FastAPI Server
@@ -72,40 +106,34 @@ class ProcessRequest(BaseModel):
 class GeneralResponse(BaseModel):
     result: str
 
+# Helper function to safely handle temporary files
+def save_docx_and_extract_text(document_obj, prefix="temp_doc"):
+    """Safely save a docx Document object and extract its text content."""
+    try:
+        # Use tempfile to create a proper temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx', prefix=prefix) as tmp_file:
+            temp_file_path = tmp_file.name
+        
+        # Save the document
+        document_obj.save(temp_file_path)
+        
+        # Read the text content
+        doc = docx.Document(temp_file_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        
+        return full_text
+    finally:
+        # Clean up the temporary file
+        try:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+        except:
+            pass  # Ignore cleanup errors
+
 # FastAPI Endpoints
 @app.get("/")
 def root():
     return {"message": "AI Office Backend Server is running."}
-
-# Dedicated endpoint for Document Generation
-# @app.post("/generate_document", response_model=GeneralResponse)
-# def generate_document_endpoint(request: DocumentRequest):
-#     """Generates a document based on a complete DocumentRequest object."""
-#     print("Backend: Received a complete DocumentRequest for generation.")
-#     try:
-#         # The agent now receives a validated DocumentRequest object directly
-#         output_document_obj = document_agent.generate_document(request)
-        
-#         # document_agent.generate_document returns a docx.Document object.
-#         # We need to save it to a temporary file and read its text content.
-#         # This is important for sending the text back via FastAPI.
-#         temp_file_path = "temp_generated_document.docx"
-#         output_document_obj.save(temp_file_path) # Save the docx.Document object to a temporary file
-        
-#         doc = docx.Document(temp_file_path)
-#         full_text = "\n".join([para.text for para in doc.paragraphs])
-#         os.remove(temp_file_path) # Clean up the temporary file
-
-#         if not full_text:
-#             raise HTTPException(status_code=500, detail="Failed to extract text from generated document.")
-#         return GeneralResponse(result=full_text)
-#     except Exception as e:
-#         print(f"Error in generate_document_endpoint: {e}")
-#         raise HTTPException(status_code=500, detail=f"Document generation failed: {str(e)}")
-
-
-# In backend_server.py, replace the existing /generate_document endpoint
-# and add the new dedicated endpoints below it.
 
 # General Document Generation Endpoint (The fallback)
 @app.post("/generate_document", response_model=GeneralResponse)
@@ -114,13 +142,7 @@ def generate_document_endpoint(request: DocumentRequest):
     print(f"Backend: Received a general document request for type: '{request.doc_type}'")
     try:
         output_document_obj = document_agent.generate_document(request)
-        
-        temp_file_path = "temp_generated_document.docx"
-        output_document_obj.save(temp_file_path)
-        
-        doc = docx.Document(temp_file_path)
-        full_text = "\n".join([para.text for para in doc.paragraphs])
-        os.remove(temp_file_path)
+        full_text = save_docx_and_extract_text(output_document_obj, "general_doc_")
 
         if not full_text:
             raise HTTPException(status_code=500, detail="Failed to extract text from generated document.")
@@ -137,20 +159,12 @@ def create_cover_letter_endpoint(request: DocumentRequest):
     try:
         request.doc_type = "cover_letter"
         output_document_obj = document_agent.generate_document(request)
-        
-        # Save the generated docx.Document object to a temp file and read its text
-        temp_file_path = "temp_cover_letter.docx"
-        output_document_obj.save(temp_file_path)
-        
-        doc = docx.Document(temp_file_path)
-        full_text = "\n".join([para.text for para in doc.paragraphs])
-        os.remove(temp_file_path)
+        full_text = save_docx_and_extract_text(output_document_obj, "cover_letter_")
         
         return GeneralResponse(result=full_text)
     except Exception as e:
         print(f"Error in create_cover_letter_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Cover letter creation failed: {str(e)}")
-
 
 # Dedicated Meeting Minutes Endpoint
 @app.post("/create_minutes", response_model=GeneralResponse)
@@ -160,14 +174,7 @@ def create_minutes_endpoint(request: DocumentRequest):
     try:
         request.doc_type = "minutes"
         output_document_obj = document_agent.generate_document(request)
-        
-        # Save the generated docx.Document object to a temp file and read its text
-        temp_file_path = "temp_minutes.docx"
-        output_document_obj.save(temp_file_path)
-        
-        doc = docx.Document(temp_file_path)
-        full_text = "\n".join([para.text for para in doc.paragraphs])
-        os.remove(temp_file_path)
+        full_text = save_docx_and_extract_text(output_document_obj, "minutes_")
         
         return GeneralResponse(result=full_text)
     except Exception as e:
@@ -182,14 +189,7 @@ def create_memo_endpoint(request: DocumentRequest):
     try:
         request.doc_type = "memo"
         output_document_obj = document_agent.generate_document(request)
-        
-        # Save the generated docx.Document object to a temp file and read its text
-        temp_file_path = "temp_memo.docx"
-        output_document_obj.save(temp_file_path)
-        
-        doc = docx.Document(temp_file_path)
-        full_text = "\n".join([para.text for para in doc.paragraphs])
-        os.remove(temp_file_path)
+        full_text = save_docx_and_extract_text(output_document_obj, "memo_")
         
         return GeneralResponse(result=full_text)
     except Exception as e:
@@ -215,36 +215,6 @@ def create_report_endpoint(request: ProcessRequest):
     except Exception as e:
         print(f"Error in create_report_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
-    
-# In backend_server.py
-
-# @app.post("/create_memo", response_model=GeneralResponse)
-# def create_memo_endpoint(request: DocumentRequest):
-#     """
-#     Specifically generates a memorandum based on the provided structured data.
-#     """
-#     print(f"Backend: Received request to create a memo on topic: '{request.topic}'")
-#     try:
-#         # Use the document agent to generate the memo content
-#         # Note: The agent handles the specifics of the 'memo' doc_type internally.
-#         output_document_obj = document_agent.generate_document(request)
-        
-#         # Save the generated docx.Document object to a temp file and read its text
-#         temp_file_path = "temp_generated_memo.docx"
-#         output_document_obj.save(temp_file_path)
-        
-#         doc = docx.Document(temp_file_path)
-#         full_text = "\n".join([para.text for para in doc.paragraphs])
-#         os.remove(temp_file_path)
-
-    #     if not full_text:
-    #         raise HTTPException(status_code=500, detail="Failed to extract text from generated memo.")
-            
-    #     return GeneralResponse(result=full_text)
-    # except Exception as e:
-    #     print(f"Error in create_memo_endpoint: {e}")
-    #     raise HTTPException(status_code=500, detail=f"Memo creation failed: {str(e)}")
-    
 
 # Dedicated endpoint for Data Analysis
 @app.post("/analyze", response_model=GeneralResponse)
@@ -301,56 +271,51 @@ def process_general_prompt(request: ProcessRequest):
         raise HTTPException(status_code=500, detail=f"General prompt processing failed: {str(e)}")
 
 # This block allows running the server directly for development
-def main():
-    """
-    This is the main entry point for the bundled executable.
-    It configures and runs the Uvicorn server.
-    """
-    import uvicorn
-    
-    # Check if running in a bundled environment
-    is_bundled = getattr(sys, 'frozen', False)
-    
-    if is_bundled:
-        print("Starting backend server from bundled executable...")
-        # In a bundle, 'reload' must be False.
-        # We can also add file logging for the production server.
-        uvicorn.run(
-            "wps_addin.backend_server:app",  # Point to the app object
-            host="127.0.0.1",
-            port=8000,
-            reload=False,
-            log_level="info"
-        )
-    else:
-        # Development mode
-        print("Starting backend server for development with auto-reload...")
-        uvicorn.run(
-            "wps_addin.backend_server:app",
-            host="127.0.0.1",
-            port=8000,
-            reload=True,
-            log_level="info"
-        )
-
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    print("Starting backend server...")
     
+    # Determine if we're in development mode
+    reload = os.getenv("ENV") == "development" and not getattr(sys, 'frozen', False)
     
-# if __name__ == "__main__":
-#     import uvicorn
-#     print("Starting backend server for development...")
-#     reload = os.getenv("ENV") == "development"
-#     uvicorn.run(app, host="127.0.0.1", port=8000, reload=reload,
-#                 log_config={"version": 1, "disable_existing_loggers": False, 
-#                             "handlers": {"file": 
-#                                 {
-#                                     "class": "logging.FileHandler",
-#                                     "filename": "server.log"
-#                                     }
-#                                 }
-#                             }
-#                 )
+    # Setup logging configuration
+    log_config = {
+        "version": 1, 
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+            },
+            "file": {
+                "class": "logging.FileHandler",
+                "filename": os.path.join(application_path, "server.log"),
+                "formatter": "default",
+            }
+        },
+        "root": {
+            "level": "INFO",
+            "handlers": ["console", "file"],
+        }
+    }
     
-    # uvicorn wps_addin.backend_server:app --reload (use to run the server)
-
+    try:
+        uvicorn.run(
+            app, 
+            host="127.0.0.1", 
+            port=8000, 
+            reload=reload,
+            log_config=log_config
+        )
+    except Exception as e:
+        error_msg = f"Failed to start server: {e}"
+        print(error_msg)
+        if getattr(sys, 'frozen', False):
+            log_file = os.path.join(application_path, 'server_startup_error.log')
+            with open(log_file, 'w') as f:
+                f.write(error_msg + "\n")

@@ -94,7 +94,7 @@ def insert_text_at_cursor(text):
         log_message("Warning: Could not find an active WPS document to insert text into.")
 
 class WPSAddin:
-    _reg_clsid_ = "{cf0b4f12-56e5-4818-b400-b3f2660e0a3c}" # python -c "import uuid; print(uuid.uuid4())"
+    _reg_clsid_ = "{a2a1731f-f7b1-47cc-9df0-cf6d544d1ff7}" # python -c "import uuid; print(uuid.uuid4())"
     _reg_desc_ = "AI Office Automation"
     _reg_progid_ = WPS_ADDIN_ENTRY_NAME  
     # _reg_class_spec_ = __name__ + ".WPSAddin"

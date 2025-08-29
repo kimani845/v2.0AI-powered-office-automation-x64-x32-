@@ -7,10 +7,9 @@ import sys
 import os
 import winreg
 import win32com.client
-import win32com.server.register
 import win32com.server.localserver
 import pythoncom
-from wps_addin.addin_base_client import WPSAddinBase, log_message
+from addin_base_client import WPSAddinBase, log_message
 
 class WPSAddin64(WPSAddinBase):
     """64-bit WPS Add-in implementation"""
@@ -33,6 +32,7 @@ def register_com_server_python_64bit(cls):
     
     try:
         # Register COM via pywin32 as usual
+        import win32com.server.register
         win32com.server.register.UseCommandLine(cls)
         
         # Overwrite to only keep InprocServer32

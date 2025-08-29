@@ -102,11 +102,11 @@ class WPSAddinBase:
         try:
             ribbon_path = resource_path('ribbon.xml')
             log_message(f"Attempting to load ribbon from: {ribbon_path}")
-           
+        
             if not os.path.exists(ribbon_path):
                 log_message(f"FATAL: Ribbon XML file does NOT exist at the path.")
                 raise FileNotFoundError(f"Ribbon XML not found at {ribbon_path}")
-           
+        
             with open(ribbon_path, 'r', encoding='utf-8') as f:
                 self.ribbon = f.read()
             log_message("Ribbon XML loaded successfully.")
@@ -147,17 +147,17 @@ class WPSAddinBase:
                 return self.ribbon
             else:
                 log_message("✗ No cached ribbon content, attempting to reload from file")
-               
+            
             ribbon_path = resource_path('ribbon.xml')
             log_message(f"Reloading ribbon XML from: {ribbon_path}")
-           
+        
             with open(ribbon_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-           
+        
             self.ribbon = content
             log_message(f"✓ Successfully reloaded ribbon XML (length: {len(content)} chars)")
             return content
-           
+        
         except Exception as e:
             log_message(f"✗ CRITICAL FAILURE in GetCustomUI: {e}")
             log_message(f"Full traceback: {traceback.format_exc()}")

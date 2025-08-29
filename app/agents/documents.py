@@ -162,12 +162,12 @@
 #             # Fallback for unsupported document types
 #             document.add_heading(f"Document for: {request.topic}", level=1)
 #             document.add_paragraph(f"This is a general document for {request.audience}. "
-#                                    f"Document type '{request.doc_type}' is not specifically handled by an agent, "
-#                                    f"so generic content will be generated.")
+#                                     f"Document type '{request.doc_type}' is not specifically handled by an agent, "
+#                                     f"so generic content will be generated.")
             
 #             # Generate generic content using the primary instruction
 #             prompt = (f"Generate a {request.length}, {request.tone} document about '{request.topic}' "
-#                       f"for {request.audience}. Output only the main body content.")
+#                         f"for {request.audience}. Output only the main body content.")
 #             generic_body = self._get_llm_response(prompt)
 #             document.add_paragraph(generic_body)
 
@@ -344,11 +344,11 @@ class DocumentGenerationAgent:
         else:
             document.add_heading(f"Document for: {request.topic}", level=1)
             document.add_paragraph(f"This is a general document for {request.audience}. "
-                                   f"Document type '{request.doc_type}' is not specifically handled by an agent, "
-                                   f"so generic content will be generated.")
+                                    f"Document type '{request.doc_type}' is not specifically handled by an agent, "
+                                    f"so generic content will be generated.")
             
             prompt = (f"Generate a {request.length}, {request.tone} document about '{request.topic}' "
-                      f"for {request.audience}. Output only the main body content.")
+                        f"for {request.audience}. Output only the main body content.")
             # CORRECTED: Use the llm_client
             generic_body = self.llm_client.generate_response(prompt)
             document.add_paragraph(generic_body)

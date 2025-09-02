@@ -10,35 +10,68 @@ from pydantic import BaseModel
 import docx
 
 
-# This block makes the script "bundle-aware" and correctly loads the .env file.
+# # This block makes the script "bundle-aware" and correctly loads the .env file.
+# from dotenv import load_dotenv
+
+# if getattr(sys, 'frozen', False):
+#     # We are running in a bundled executable.
+#     # sys.executable is the path to the .exe file.
+#     # We want to find the .env file in the same directory as the .exe.
+#     application_path = os.path.dirname(sys.executable)
+#     dotenv_path = os.path.join(application_path, '.env')
+#     if os.path.exists(dotenv_path):
+#         load_dotenv(dotenv_path=dotenv_path)
+#     else:
+#         # This is a critical error if the .env file is missing in the bundle.
+#         # You can add file logging here if you want to debug this on a client's machine.
+#         print("FATAL: Bundled .env file not found!")
+# else:
+#     # We are running in a normal Python environment (development mode).
+#     # load_dotenv() will automatically find the .env in the project root.
+#     load_dotenv()
+
+# # Path Setup
+# if getattr(sys, 'frozen', False):
+#     base_path = sys._MEIPASS
+# else:
+#     base_path = os.path.dirname(os.path.abspath(__file__))
+
+# sys.path.insert(0, base_path)
+
 from dotenv import load_dotenv
 
-if getattr(sys, 'frozen', False):
-    # We are running in a bundled executable.
-    # sys.executable is the path to the .exe file.
-    # We want to find the .env file in the same directory as the .exe.
-    application_path = os.path.dirname(sys.executable)
-    dotenv_path = os.path.join(application_path, '.env')
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+def get_base_path():
+    """ Get the base path for the application, handling PyInstaller's _MEIPASS folder. """
+    if getattr(sys, 'frozen', False):
+        # We are running in a bundled executable (_MEIPASS).
+        return sys._MEIPASS
     else:
-        # This is a critical error if the .env file is missing in the bundle.
-        # You can add file logging here if you want to debug this on a client's machine.
-        print("FATAL: Bundled .env file not found!")
+        # We are running in a normal Python environment.
+        # The project root is one level up from the wps_addin folder.
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+# --- CRITICAL PATHING LOGIC ---
+BASE_PATH = get_base_path()
+
+# Load the .env file from the correct base path
+dotenv_path = os.path.join(BASE_PATH, '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+    print(f"Successfully loaded .env file from: {dotenv_path}")
 else:
-    # We are running in a normal Python environment (development mode).
-    # load_dotenv() will automatically find the .env in the project root.
-    load_dotenv()
+    print(f"WARNING: .env file not found at {dotenv_path}. Using environment variables.")
+    # This allows the script to still work if API keys are set as system environment variables.
 
-# Path Setup
-if getattr(sys, 'frozen', False):
-    base_path = sys._MEIPASS
+# The 'app' directory to the Python path so imports like 'from app.agents...' work
+app_dir_path = os.path.join(BASE_PATH, 'app')
+if os.path.exists(app_dir_path):
+    sys.path.insert(0, app_dir_path)
+    print(f"Successfully added '{app_dir_path}' to sys.path.")
 else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-
-sys.path.insert(0, base_path)
-
-# All Heavy Imports and Agent Initializations
+    print(f"FATAL: Could not find the 'app' directory at '{app_dir_path}'. Imports will fail.")
+    sys.exit(1)
+    
+# Agent Initializations
 try:
     from app.agents.llm_client import LLMClient
     from app.agents.analyzer import StructuredDataAgent

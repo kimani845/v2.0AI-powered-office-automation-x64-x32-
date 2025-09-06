@@ -8,7 +8,7 @@ import sys
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import docx
-
+import uuid # For generating unique filenames
 
 # # This block makes the script "bundle-aware" and correctly loads the .env file.
 # from dotenv import load_dotenv
@@ -139,6 +139,50 @@ def root():
 
 # In backend_server.py, replace the existing /generate_document endpoint
 # and add the new dedicated endpoints below it.
+
+
+# Endpoint to serve downloadable files
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    """Serves a generated file for download."""
+    file_path = os.path.join("generated_documents", filename) # Store in a subfolder
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Determine media type based on file extension
+    media_type = "application/octet-stream"
+    if filename.endswith(".docx"):
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif filename.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif filename.endswith(".xlsx"):
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # Add more types as needed
+
+    with open(file_path, "rb") as file:
+        content = file.read()
+    
+    # Optional: Clean up the file after it's served if it's meant to be single-use
+    # For now, let's keep it for demonstration; implement a cleanup strategy later if needed.
+    # os.remove(file_path)
+
+    return Response(content=content, media_type=media_type, headers={
+        "Content-Disposition": f"attachment; filename={filename}"
+    })
+
+
+def save_document_and_get_download_link(document_obj: docx.Document, doc_type: str) -> str:
+    """Saves a docx.Document object to a temporary file and returns its download URL."""
+    # Ensure the directory for generated documents exists
+    output_dir = "generated_documents"
+    os.makedirs(output_dir, exist_ok=True)
+
+    unique_filename = f"{doc_type}_{uuid.uuid4().hex}.docx"
+    file_path = os.path.join(output_dir, unique_filename)
+    document_obj.save(file_path)
+    print(f"Document saved to: {file_path}")
+    return f"http://127.0.0.1:8000/download/{unique_filename}"
+
 
 # General Document Generation Endpoint (The fallback)
 @app.post("/generate_document", response_model=GeneralResponse)
@@ -369,21 +413,6 @@ def main():
 if __name__ == "__main__":
     main()
     
-    
-# if __name__ == "__main__":
-#     import uvicorn
-#     print("Starting backend server for development...")
-#     reload = os.getenv("ENV") == "development"
-#     uvicorn.run(app, host="127.0.0.1", port=8000, reload=reload,
-#                 log_config={"version": 1, "disable_existing_loggers": False, 
-#                             "handlers": {"file": 
-#                                 {
-#                                     "class": "logging.FileHandler",
-#                                     "filename": "server.log"
-#                                     }
-#                                 }
-#                             }
-#                 )
     
     # uvicorn wps_addin.backend_server:app --reload (use to run the server)
 

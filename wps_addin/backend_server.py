@@ -767,3 +767,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# uvicorn wps_addin.backend_server:app --reload (use to run the server)
